@@ -7,6 +7,17 @@ import {insertPoint,clamp} from './geometry.mjs';
 import {effectRegistry,defaultParams} from '../registry/effects.mjs';
 let soloId=null;
 let scene,zoneId,effectId,vertex=0,playing=true,compare=false,loading=0;
+const embedded=new URLSearchParams(location.search).get("embedded")==="1";
+const notify=(type,extra={})=>{if(embedded)window.parent.postMessage({type,...extra},"*");};
+const changed=()=>notify("studio:dirty");
+const inspect=(part)=>{
+ if(!embedded)return;
+ document.body.dataset.inspector=part;
+ document.querySelector('#inspect-zone')?.setAttribute('aria-pressed',String(part==='zone'));
+ document.querySelector('#inspect-effect')?.setAttribute('aria-pressed',String(part==='effect'));
+};
+
+
 const history=new History();
 const status=(message,error=false)=>{ $('#status').textContent=message;$('#status').classList.toggle('error',error); };
 const error=e=>status(e.message||String(e),true);
@@ -16,7 +27,7 @@ const effect=()=>scene?.effects.find(e=>e.id===effectId);
 const uid=()=>crypto.randomUUID();
 function mutate(action,key=null,render=true){
   if(!scene)return false;
-  try {const next=structuredClone(scene);action(next);validateProject(next);history.record(scene,key);scene=next;preview.update(scene);if(render)draw();else{guides();historyButtons();}status('Değişiklik uygulandı. JSON dışa aktararak kaydedin.');return true;}catch(e){if(render)draw();error(e);return false;}
+  try {const next=structuredClone(scene);action(next);validateProject(next);history.record(scene,key);scene=next;preview.update(scene);if(render)draw();else{guides();historyButtons();}status(embedded?'Değişiklik yapıldı.':'Değişiklik uygulandı. JSON dışa aktararak kaydedin.');changed();return true;}catch(e){if(render)draw();error(e);return false;}
 }
 function historyButtons(){ $('#undo').disabled=!history.past.length;$('#redo').disabled=!history.future.length; }
 function input(label,value,change,attrs={}){return field(label,el('input',{value,...attrs,onchange:e=>change(e.target.type==='checkbox'?e.target.checked:e.target.type==='number'?e.target.valueAsNumber:e.target.value)}));}
@@ -31,8 +42,8 @@ function draw(){
   $('#photo').alt=scene.photo.name;$('#gideros-license').hidden=scene.photo.src!=='assets/gideros-1-1818.webp';$('#photo-name').textContent=scene.photo.name;$('#dimensions').textContent=`${scene.photo.width} × ${scene.photo.height} · Orijinal koordinatlar`;
   $('#credit-text').textContent=scene.photo.credit||'Kullanıcı tarafından açılan fotoğraf. Kullanım hakkını ve kaynak bilgisini kendiniz koruyun.';
   $('#zone-count').textContent=scene.zones.length;$('#effect-count').textContent=scene.effects.length;
-  $('#zones').replaceChildren(...scene.zones.map(z=>el('div',{class:`list-row ${z.id===zoneId?'selected':''}`},button(z.name,()=>{zoneId=z.id;effectId=scene.effects.find(e=>e.zoneId===z.id)?.id;vertex=0;draw();},{class:'row-select'}),el('input',{type:'checkbox',checked:z.visible,'aria-label':`${z.name} görünür`,onchange:e=>mutate(s=>{s.zones.find(x=>x.id===z.id).visible=e.target.checked;})}))));
-  $('#effects').replaceChildren(...scene.effects.map(e=>el('div',{class:`list-row ${e.id===effectId?'selected':''}`},button(effectRegistry[e.type].label,()=>{effectId=e.id;zoneId=e.zoneId;vertex=0;draw();},{class:'row-select'}),el('input',{type:'checkbox',checked:e.enabled,'aria-label':`${effectRegistry[e.type].label} etkin`,onchange:event=>mutate(s=>{s.effects.find(x=>x.id===e.id).enabled=event.target.checked;})}))));
+  $('#zones').replaceChildren(...scene.zones.map(z=>el('div',{class:`list-row ${z.id===zoneId?'selected':''}`},button(z.name,()=>{zoneId=z.id;effectId=scene.effects.find(e=>e.zoneId===z.id)?.id;vertex=0;inspect("zone");draw();},{class:'row-select'}),el('input',{type:'checkbox',checked:z.visible,'aria-label':`${z.name} görünür`,onchange:e=>mutate(s=>{s.zones.find(x=>x.id===z.id).visible=e.target.checked;})}))));
+  $('#effects').replaceChildren(...scene.effects.map(e=>el('div',{class:`list-row ${e.id===effectId?'selected':''}`},button(effectRegistry[e.type].label,()=>{effectId=e.id;zoneId=e.zoneId;vertex=0;inspect("effect");draw();},{class:'row-select'}),el('input',{type:'checkbox',checked:e.enabled,'aria-label':`${effectRegistry[e.type].label} etkin`,onchange:event=>mutate(s=>{s.effects.find(x=>x.id===e.id).enabled=event.target.checked;})}))));
   $('#add-effect').disabled=!zone();
   const z=zone(),zi=$('#zone-inspector');zi.replaceChildren(el('h2',{text:'Bölge'}));
   if(z){
@@ -71,7 +82,7 @@ function guides(){
   const svg=$('#guides-svg');svg.style.display=$('#guides').checked?'':'none';svg.replaceChildren();if(!scene)return;
   for(const z of scene.zones){if(!z.visible)continue;
     const polygon=svgNode('polygon',{points:z.points.map(p=>preview.project(p).join(',')).join(' '),class:`zone-polygon ${z.id===zoneId?'is-selected':''}`});
-    polygon.addEventListener('click',()=>{zoneId=z.id;effectId=scene.effects.find(e=>e.zoneId===z.id)?.id;vertex=0;draw();});svg.append(polygon);
+    polygon.addEventListener('click',()=>{zoneId=z.id;effectId=scene.effects.find(e=>e.zoneId===z.id)?.id;vertex=0;inspect('zone');draw();});svg.append(polygon);
   }
   const z=zone();if(!z?.visible)return;
   z.points.forEach((p,i)=>{const [cx,cy]=preview.project(p);const circle=svgNode('circle',{cx,cy,r:6,class:`vertex ${i===vertex?'selected':''}`,tabindex:0,role:'button','aria-label':`Köşe ${i+1}`});
@@ -81,7 +92,7 @@ function guides(){
   });
 }
 $('#preview-host').addEventListener('pointermove',event=>{if(!drag||event.pointerId!==drag.id)return;const next=structuredClone(scene);next.zones.find(z=>z.id===zoneId).points[vertex]=preview.point(event);try{validateProject(next);scene=next;drag.changed=true;preview.update(scene);guides();}catch(e){error(e);}});
-function endDrag(event){if(!drag||event.pointerId!==drag.id)return;if(drag.changed){history.record(drag.before);status('Köşe fotoğraf koordinatlarında taşındı.');}drag=null;draw();}
+function endDrag(event){if(!drag||event.pointerId!==drag.id)return;if(drag.changed){history.record(drag.before);changed();status('Köşe fotoğraf koordinatlarında taşındı.');}drag=null;draw();}
 $('#preview-host').addEventListener('pointerup',endDrag);$('#preview-host').addEventListener('pointercancel',endDrag);
 new ResizeObserver(guides).observe($('#preview-host'));
 $('#photo').addEventListener('load',guides);
@@ -100,11 +111,34 @@ for(const kind of ['photo','project']){
   }catch(e){error(e);}finally{event.target.value='';}};
 }
 $('#export').onclick=()=>{try{if(!scene)throw new Error('Önce proje yükleyin.');const text=exportProject(scene);if(new TextEncoder().encode(text).length>MAX_FILE_BYTES)throw new Error('Dışa aktarım 25 MB sınırını aşıyor; daha küçük fotoğraf seçin.');download(text,'efekt-atolyesi.scene.json');status('JSON indirildi. Gömülü fotoğraflar proje dosyasına dahildir.');}catch(e){error(e);}};
-function travel(direction){if(!scene)return;scene=history[direction](scene);preview.update(scene,{immediate:true});draw();status(direction==='undo'?'Geri alındı.':'Yinelendi.');}
+function travel(direction){if(!scene)return;scene=history[direction](scene);preview.update(scene,{immediate:true});draw();status(direction==='undo'?'Geri alındı.':'Yinelendi.');changed();}
 $('#undo').onclick=()=>travel('undo');$('#redo').onclick=()=>travel('redo');
 document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=='z'||e.target.matches('input,select,textarea'))return;e.preventDefault();travel(e.shiftKey?'redo':'undo');});
 $('#play').onclick=()=>{playing=!playing;preview.setPlaying(playing);$('#play').textContent=playing?'Ⅱ Duraklat':'▶ Oynat';$('#play').setAttribute('aria-pressed',String(playing));};
 $('#compare').onclick=()=>{compare=!compare;preview.setCompare(compare);$('#compare').setAttribute('aria-pressed',String(compare));$('#comparison-badge').hidden=!compare;};
 $('#guides').onchange=guides;$('#fit').onchange=e=>{preview.setFit(e.target.value);guides();};
 $('#restart').onclick=()=>{preview.rebuild();status('Önizleme aynı tohumla başlatıldı.');};$('#reset').onclick=example;
-await example();
+
+if(embedded){
+  document.body.classList.add("embedded");
+  inspect("effect");
+  $("#inspect-effect").onclick=()=>inspect("effect");
+  $("#inspect-zone").onclick=()=>inspect("zone");
+  window.addEventListener("message",async event=>{
+    if(event.source!==window.parent||!event.data||typeof event.data!=="object")return;
+    if(event.data.type==="studio:hello"){notify("studio:ready");return;}
+    if(event.data.type==="studio:load"){
+      try{
+        const next=importProject(JSON.stringify(event.data.scene));
+        await install(next,"Sahne hazır.");
+        history.past.length=0;history.future.length=0;historyButtons();
+        notify("studio:loaded",{requestId:event.data.requestId});
+      }catch(e){error(e);notify("studio:error",{message:String(e.message||e),requestId:event.data.requestId});}
+    }
+    if(event.data.type==="studio:get"){
+      try{notify("studio:data",{requestId:event.data.requestId,scene:structuredClone(scene)});}
+      catch(e){notify("studio:error",{requestId:event.data.requestId,message:String(e.message||e)});}
+    }
+  });
+  notify("studio:ready");
+}else await example();

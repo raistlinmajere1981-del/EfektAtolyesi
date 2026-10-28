@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": "blacksea",
+      "name": "BlackSea Pansiyon",
+      "directory": "blacksea_web",
+      "siteUrl": "https://blackseapansiyon.com/",
+      "images": [
+        {
+          "id": "hero",
+          "name": "Ana sayfa · Cide hero",
+          "photo": "public/assets/site/img/hero/cide-ai-desktop-clean.webp",
+          "photoRef": "assets/blacksea-desktop-1536.webp",
+          "width": 1536,
+          "height": 1024,
+          "scene": "public/assets/site/scenes/hero.scene.json",
+          "upload": {
+            "type": "natro-ftp",
+            "credentialId": "blacksea-natro",
+            "remote": "public/assets/site/scenes/hero.scene.json"
+          },
+          "publicSceneUrl": "https://blackseapansiyon.com/assets/site/scenes/hero.scene.json"
+        }
+      ]
+    },
+    {
+      "id": "gundogdu",
+      "name": "Gündoğdu Pansiyon",
+      "directory": "gundogdu_web",
+      "siteUrl": "https://yardimciasistangunduodu.alwaysdata.net/",
+      "images": [
+        {
+          "id": "hero",
+          "name": "Ana sayfa · Gideros hero",
+          "photo": "canonical/public/assets/site/img/gideros-1-1818.webp",
+          "photoRef": "assets/gideros-1-1818.webp",
+          "width": 1818,
+          "height": 1228,
+          "scene": "canonical/site/preserved-effects/hero.scene.json",
+          "upload": {
+            "type": "disabled",
+            "note": "Yeni şablonun hero efekt bağlantısı henüz etkin değil. Önce site bağlantısı hazırlanmalı."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -42,3 +42,37 @@ node .test-artifacts/browser-smoke-1.1.cjs
 Kontrol mevcut düzenleme akışını, yeni kontrolleri, JSON aktarımını, dört farklı çokgende gerçek Canvas parıltı piksellerini, statik karşılaştırmayı ve 390 px görünümü doğrular. Ekran görüntüleri `.test-artifacts/editor-1.1.png` ve `.test-artifacts/editor-1.1-mobile.png` olarak kaydedilir.
 
 BlackSea fotoğrafı ve proje örneği: `http://127.0.0.1:8095/?example=blacksea`. Fotoğraf 1536×1024; kullanım hakkı BlackSea sitesine bağlıdır. Gündoğdu için varsayılan 1818×1228 Gideros örneğini kullanın. Düzenle → JSON dışa aktar → hedef sitede `bash scripts/install-effect-scene.sh ~/Downloads/file.json --check-only` → aynı komutu `--check-only` olmadan çalıştır → yerelde doğrula → onay sonrası site-only deploy. Ayrıntı: hedef sitenin `docs/EFFECT_ENGINE.md` dosyası. Aktif JSON kurulana kadar iki site statik fotoğraf gösterir.
+
+
+## Admin Panel içinde çalışma (2026-10)
+
+Yardımcı Asistan Admin > **Efekt Atölyesi**, bu deponun editörünü kendi içinde görüntüler.
+Çekirdek motor ve efekt kayıtları yalnız bu depodadır; Admin, kaynak editörü paketine kopyalayıp
+proje/görsel seçimi, taslak kaydı ve hedefli yayın işlemleri için köprü sağlar.
+
+- Proje ve görsel kayıtları: `config/projects.json`. `projects[]` ve her projenin
+  `images[]` listesi sayısal olarak sınırlı değildir. Her görselin fotoğraf, sahne,
+  boyut, kaynak dizin ve yayın hedefi açıkça tanımlıdır.
+- Yerel taslaklar: `.studio-drafts/<proje>__<görsel>.scene.json` (Git dışı).
+  Düzenleme sonrası otomatik kaydolur; canlı site dosyasını değiştirmez.
+- Siteye yükle: Taslağın şeması/motoru doğrulanır, yalnız sahne JSON'u kaynak
+  site deposuna yazılır ve ilgili hedefe gönderilir. Fotoğraf, web modülü ve
+  tüm-site paketleri bu işlemde yüklenmez. BlackSea Natro FTP kimlik bilgileri
+  mevcut Yardımcı Asistan yerel credentials kaydından okunur. HTTPS sahne
+  içeriği ayrıca karşılaştırılarak doğrulanır.
+- Gündoğdu yeni şablonunun hero bağlantısı henüz tamamlanmadığı için bu hedef
+  düzenlenebilir, ama yayın düğmesi pasiftir. Site hazır olduğunda proje kaydının
+  `upload` alanıyla ilgili bağlantı etkinleştirilir.
+- Yeni efekt türü için `src/registry/effects.mjs` kayıt ve ayrı runtime
+  modülü gerekir. Site runtime kopyası yeni efekti tanımadan o efektli sahne
+  yayınlanmamalıdır. Atölye çekirdeği hiçbir siteye bağımlı değildir.
+- Admin build/dev öncesi `scripts/sync-effect-studio.mjs` ile kaynak editör
+  `apps/admin-control-center/public/effect-studio` altına kopyalanır;
+  bu klasör Git dışıdır. Yeni kaynak değişikliklerinde admin yeniden derlenir.
+
+İlgili kontroller: `bash scripts/check.sh` (izole çoklu proje/taslak/yayın testi dahil),
+Admin için `npm run typecheck` ve `npm run build`. Browser/Electron smoke
+deneysel olarak `.test-artifacts/admin-effects-smoke.cjs` içindedir.
+
+Yayın işlemi kullanıcı onayı olmadan başlatılmaz. Ayrı admin Deploy/Release
+işlemi sürerken eşzamanlı canlı efekt yayını engellenir.
