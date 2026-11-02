@@ -1,11 +1,12 @@
 import {readFile,writeFile,rename,mkdir,stat} from "node:fs/promises";
-import {existsSync} from "node:fs";
-import {dirname,resolve,join,sep} from "node:path";
+import {existsSync,readFileSync} from "node:fs";
+import {dirname,resolve,join,sep,basename} from "node:path";
 import {fileURLToPath} from "node:url";
 import {randomUUID} from "node:crypto";
 import {spawn,execFileSync} from "node:child_process";
 import {importProject,exportProject,validateProject,MAX_FILE_BYTES} from "../src/model/project.mjs";
 import {compileScene} from "../src/runtime/index.mjs";
+import {discoverSiteProjects} from "./site-projects.mjs";
 
 const studioRoot=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const workspace=process.env.EFEKT_STUDIO_WORKSPACE ? resolve(process.env.EFEKT_STUDIO_WORKSPACE) : resolve(studioRoot,"..");
@@ -17,9 +18,22 @@ const idOf=(p,i)=>p.id+":"+i.id;
 const safeId=(id)=>/^[a-z0-9_-]+:[a-z0-9_-]+$/.test(id);
 
 async function projects(){
- const reg=JSON.parse(await readFile(registryFile,"utf8"));
- if(reg.version!==1||!Array.isArray(reg.projects))throw Error("Proje kaydı geçersiz.");
- return reg.projects;
+ // Test fixture/custom explicit registry remains supported. Normal Admin sessions
+ // use the canonical installation inventory; projects.json only supplies site
+ // specific scene/binding hints and cannot invent additional installations.
+ if(process.env.EFEKT_STUDIO_PROJECTS_FILE){
+  const reg=JSON.parse(await readFile(registryFile,"utf8"));
+  if(reg.version!==1||!Array.isArray(reg.projects))throw Error("Proje kaydı geçersiz.");
+  return reg.projects;
+ }
+ const repo=join(workspace,"YardimciAsistan");
+ const resolved=discoverSiteProjects({
+  workspace, legacyFile:registryFile, registryFile:join(repo,"config/installations.json")
+ });
+ return resolved.map(p=>({...p,images:p.images.map(i=>({
+  ...i.__source, sourceHash:i.sourceHash,sourcePath:i.sourcePath,
+  bindingStatus:i.bindingStatus, note:i.note
+ }))}));
 }
 async function selected(id) {
  if(!safeId(id))throw Error("Geçersiz hedef.");
@@ -28,6 +42,90 @@ async function selected(id) {
  throw Error("Kayıtlı görsel bulunamadı.");
 }
 function draftPath(id){if(!safeId(id))throw Error("Geçersiz hedef.");return join(draftsRoot,id.replace(":","__")+".scene.json");}
+function draftHashPath(id){return draftPath(id)+".source.sha256";}
+function sameSource(id,image){
+ if(!image.sourceHash)return true; // explicit test fixture has no source revision
+ const file=draftHashPath(id);
+ return !existsSync(file) || String(readFileSync(file,"utf8")).trim()===image.sourceHash;
+}
+
+/**
+ * A first-time static photo binding is staged locally. Deployment to the
+ * registered site remains a separate, explicit Admin operation.
+ * Gallery/product/room/API images are ineligible regardless of their filename.
+ */
+function staticSiteSource(photo) {
+ const match=photo?.match(/^(?:canonical\/)?(?:public\/)?assets\/(site\/(?:img|media)\/[a-zA-Z0-9_/-]+\.(?:jpe?g|png|webp|avif))$/);
+ return match?.[1] ?? null;
+}
+function stagedManifest(project,image) {
+ // The Gündoğdu/Teknikel canonical source tree does not imply that its
+ // existing site-only deploy script publishes this folder. No false promise:
+ // enable one-click preparation only for the active site source tree.
+ if(image.photo?.startsWith("canonical/"))return null;
+ const source=staticSiteSource(image.photo);
+ if(!source||!image.scene?.match(/^(?:canonical\/)?(?:public\/)?assets\/site\/scenes\/[a-z0-9_-]+\.scene\.json$/))return null;
+ const path=fileFor(project,image.scene);
+ return {source, path, manifest:join(dirname(path),"effects-manifest.json")};
+}
+function hasStagedBinding(project,image) {
+ const paths=stagedManifest(project,image);
+ if(!paths||!existsSync(paths.manifest)||!sameSource(idOf(project,image),image))return false;
+ try{
+  const data=JSON.parse(readFileSync(paths.manifest,"utf8"));
+  return data.version===1&&Array.isArray(data.bindings)&&data.bindings.some(b=>
+   b.source===paths.source&&b.slot===image.id&&b.scene===basename(paths.path));
+ }catch{return false;}
+}
+async function prepare(id) {
+ const {project,image}=await selected(id);
+ if(image.upload&&image.upload.type!=="disabled")throw Error("Bu görselin mevcut yayın bağlantısı zaten var.");
+ const paths=stagedManifest(project,image);
+ if(!paths)throw Error("Yalnız sabit site tasarım fotoğraflarına efekt bağlantısı hazırlanabilir.");
+ if(!existsSync(draftPath(id)))throw Error("Önce efekt taslağını kaydedin.");
+ if(!sameSource(id,image))throw Error("Kaynak fotoğraf değişmiş. Güncel fotoğrafta yeni taslak oluşturun.");
+ const scene=importProject(await readFile(draftPath(id),"utf8"));
+ checkScene(scene,image);
+ const zones=new Set(scene.zones.filter(z=>z.visible).map(z=>z.id));
+ if(!scene.effects.some(e=>e.enabled&&zones.has(e.zoneId)))
+  throw Error("Site bağlantısı için görünür etkin bir efekt gerekli.");
+ let data={version:1,bindings:[]};
+ if(existsSync(paths.manifest)) {
+  const raw=await readFile(paths.manifest,"utf8");
+  if(Buffer.byteLength(raw)>16*1024)throw Error("Site efekt manifesti çok büyük.");
+  data=JSON.parse(raw);
+  if(data.version!==1||!Array.isArray(data.bindings)||data.bindings.length>32)
+   throw Error("Site efekt manifesti geçersiz.");
+ }
+ // Preserve existing site-owned effects, but do not publish a manifest
+ // that the canonical site renderer would reject as invalid or ambiguous.
+ const sourceSeen=new Set(),slotSeen=new Set();
+ const assetPrefix=image.photo.startsWith("canonical/")?"canonical/public/assets/":
+   image.photo.startsWith("assets/site/")?"assets/":"public/assets/";
+ for(const b of data.bindings) {
+  if(!b||typeof b!=="object"||Object.keys(b).sort().join(",")!=="scene,slot,source"||
+      typeof b.source!=="string"||!/^site\/(?:img|media)\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\.(?:jpe?g|png|webp|avif)$/.test(b.source)||
+      typeof b.slot!=="string"||!(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]{0,99}$/.test(b.slot))||
+      typeof b.scene!=="string"||!(/^[a-zA-Z0-9_-]{1,64}\.scene\.json$/.test(b.scene))||
+      sourceSeen.has(b.source)||slotSeen.has(b.slot)||
+      !existsSync(fileFor(project,assetPrefix+b.source)))
+    throw Error("Mevcut site efekt manifesti geçersiz; güvenli biçimde güncellenemedi.");
+  sourceSeen.add(b.source);slotSeen.add(b.slot);
+ }
+ const incoming={source:paths.source,slot:image.id,scene:basename(paths.path)};
+ const before=data.bindings.filter(b=>b.source!==paths.source&&b.slot!==image.id);
+ if(before.length!==data.bindings.length &&
+    data.bindings.some(b=>(b.source===paths.source||b.slot===image.id)&&
+      (b.source!==incoming.source||b.slot!==incoming.slot||b.scene!==incoming.scene)))
+   throw Error("Aynı görsel veya sahne başka bir efekt hedefine bağlı.");
+ data.bindings=[...before,incoming];
+ if(Buffer.byteLength(JSON.stringify(data))>16*1024)throw Error("Site efekt manifesti sınırı aşıldı.");
+ // Manifest is last: the site never points at a scene that wasn't written.
+ await saveAtomic(paths.path,exportProject(scene));
+ await saveAtomic(paths.manifest,JSON.stringify(data,null,2)+"\n");
+ return {ok:true,message:"Site kaynaklarında sabit görsel sahnesi hazırlandı. Canlıya almak için site deploy'u gerekir.",
+  siteUrl:project.siteUrl,scenePath:image.scene};
+}
 function checkScene(scene,im) {
  scene.photo={...scene.photo,src:im.photoRef,width:im.width,height:im.height};
  validateProject(scene);
@@ -44,9 +142,18 @@ async function list(){
  return Promise.all((await projects()).map(async project=>{
  const images=await Promise.all((project.images??[]).map(async image=>{
  const id=idOf(project,image),photo=fileFor(project,image.photo),scene=fileFor(project,image.scene);
- return {id,name:image.name,available:existsSync(photo),hasDraft:existsSync(draftPath(id)),hasScene:existsSync(scene),canPublish:image.upload?.type!=="disabled"&&Boolean(image.upload),note:image.upload?.note??"",width:image.width,height:image.height};
+ const staged=hasStagedBinding(project,image);
+ return {id,name:image.name,available:existsSync(photo),hasDraft:existsSync(draftPath(id)),hasScene:existsSync(scene),
+  canPublish:image.upload?.type!=="disabled"&&Boolean(image.upload),
+  // A staged scene stays editable before site deployment; preparing again
+  // overwrites only its local scene and idempotently keeps the manifest entry.
+  canPrepare:!image.upload&&sameSource(id,image)&&Boolean(stagedManifest(project,image)),
+  note:staged?"Site kaynaklarında hazır. Site deploy ile etkinleşecek.":image.note??image.upload?.note??"",
+  bindingStatus:staged?"staged":image.bindingStatus??(image.upload?.type!=="disabled"&&image.upload?"linked":"needs-setup"),
+  sourceHash:image.sourceHash??"",sourcePath:image.sourcePath??image.photo,
+  width:image.width,height:image.height};
  }));
- return {id:project.id,name:project.name,siteUrl:project.siteUrl,images};
+ return {id:project.id,name:project.name,siteUrl:project.siteUrl,note:project.note??"",images};
  }));
 }
 async function load(id) {
@@ -57,6 +164,8 @@ async function load(id) {
  const bytes=await readFile(photoFile);
  if(bytes.length>MAX_FILE_BYTES*0.7)throw Error("Fotoğraf önizleme sınırını aşıyor.");
  const preview="data:image/"+(mime==="jpg"?"jpeg":mime)+";base64,"+bytes.toString("base64");
+ if(existsSync(draftPath(id))&&!sameSource(id,image))
+   throw Error("Kaynak görsel değişmiş; eski taslağın koordinatları otomatik uygulanmadı.");
  const sceneFile=existsSync(draftPath(id))?draftPath(id):fileFor(project,image.scene);
  let scene;
  if(existsSync(sceneFile)){
@@ -78,6 +187,7 @@ async function save(id,input){
  const contents=exportProject(scene);
  if(Buffer.byteLength(contents)>MAX_FILE_BYTES)throw Error("Sahne sınırı aşıldı.");
  await saveAtomic(draftPath(id),contents);
+ if(image.sourceHash)await saveAtomic(draftHashPath(id),image.sourceHash+"\n");
  return {ok:true,message:"Yerel taslak kaydedildi.",effectCount:scene.effects.length};
 }
 function execute(command,args,{input,env,cwd}={}){
@@ -96,6 +206,7 @@ async function publish(id){
  if(image.upload?.type==="disabled"||!image.upload)throw Error(image.upload?.note||"Bu görsel için yayın tanımlı değil.");
  const source=draftPath(id);
  if(!existsSync(source))throw Error("Önce taslağı kaydedin.");
+ if(!sameSource(id,image))throw Error("Görsel taslaktan sonra değişmiş; önce güncel fotoğrafı açın.");
  const scene=importProject(await readFile(source,"utf8"));
  checkScene(scene,image);
  const target=fileFor(project,image.scene);
@@ -138,6 +249,7 @@ export async function dispatch(action,args={}){
  if(action==="list")return list();
  if(action==="load")return load(args.id);
  if(action==="save")return save(args.id,args.scene);
+ if(action==="prepare")return prepare(args.id);
  if(action==="publish")return publish(args.id);
  throw Error("Bilinmeyen işlem.");
 }

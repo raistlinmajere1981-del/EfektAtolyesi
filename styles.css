@@ -18,3 +18,27 @@ body.embedded .inspector-switch button[aria-pressed=true]{background:#e0eee7;bor
 body.embedded[data-inspector=zone] #effect-inspector,body.embedded[data-inspector=effect] #zone-inspector{display:none}
 body.embedded .inspector>.divider{display:none}
 body.embedded .inspector #scene-seed{margin-top:24px}
+
+/* Embedded Admin workspace owns the viewport; only side controls scroll. */
+html:has(body.embedded),body.embedded{height:100%;max-height:100%;overflow:hidden}
+body.embedded .workspace{height:100dvh;max-height:100dvh;min-height:0;margin:0;display:grid;grid-template-columns:178px minmax(240px,1fr) 226px;align-items:stretch;gap:8px;padding:8px;overflow:hidden}
+body.embedded .library,body.embedded .inspector{height:100%;max-height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+body.embedded .stage-column{height:100%;max-height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+body.embedded .stage-heading,body.embedded .preview-toolbar,body.embedded .stage-caption,body.embedded .status{flex-shrink:0}
+body.embedded .preview-host{height:auto!important;min-height:190px;flex:1}
+body.embedded .stage-caption{padding:6px 1px}
+body.embedded .status{padding:7px 10px;min-height:32px;margin-top:4px}
+body.embedded .panel{padding:11px}
+body.embedded .panel-heading{margin-bottom:9px}
+@media(max-width:900px){
+ body.embedded .workspace{grid-template-columns:140px minmax(220px,1fr) 190px;gap:5px;padding:5px}
+ body.embedded .panel{padding:7px}
+}
+@media(max-width:610px){
+ body.embedded .workspace{grid-template-columns:132px minmax(180px,1fr);gap:5px;padding:5px}
+ body.embedded .inspector{display:none}
+}
+/* The canonical 1180px responsive rule must not move Admin inspector below stage. */
+@media(min-width:610px){body.embedded .workspace>.inspector{grid-column:auto;grid-row:auto;display:block}}
+/* Higher-specificity override of legacy two-column responsive inspector placement. */
+@media (min-width:610px){body.embedded .workspace > aside.panel.inspector{grid-column:3!important;grid-row:1!important;display:block!important}}

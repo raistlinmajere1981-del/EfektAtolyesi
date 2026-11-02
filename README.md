@@ -60,9 +60,13 @@ proje/görsel seçimi, taslak kaydı ve hedefli yayın işlemleri için köprü 
   tüm-site paketleri bu işlemde yüklenmez. BlackSea Natro FTP kimlik bilgileri
   mevcut Yardımcı Asistan yerel credentials kaydından okunur. HTTPS sahne
   içeriği ayrıca karşılaştırılarak doğrulanır.
-- Gündoğdu yeni şablonunun hero bağlantısı henüz tamamlanmadığı için bu hedef
-  düzenlenebilir, ama yayın düğmesi pasiftir. Site hazır olduğunda proje kaydının
-  `upload` alanıyla ilgili bağlantı etkinleştirilir.
+- Gündoğdu'nun **aktif site kökü** için hero bağlantısı,
+  `assets/img/gideros-1-1818.webp` ile
+  `assets/effects/hero.scene.json` üzerinden çalışır. SSH/rsync hedefi
+  sitenin mevcut `scripts/deploy-site.sh` yolu ile eşleşir. Canlı aktarım
+  başlatılmadan önce kullanıcı onayı ve diğer Admin işlem kilitleri gerekir.
+  Gündoğdu `canonical/` şablon kaynakları ayrı olup otomatik site-only
+  deploy varmış gibi gösterilmez.
 - Yeni efekt türü için `src/registry/effects.mjs` kayıt ve ayrı runtime
   modülü gerekir. Site runtime kopyası yeni efekti tanımadan o efektli sahne
   yayınlanmamalıdır. Atölye çekirdeği hiçbir siteye bağımlı değildir.
@@ -76,3 +80,66 @@ deneysel olarak `.test-artifacts/admin-effects-smoke.cjs` içindedir.
 
 Yayın işlemi kullanıcı onayı olmadan başlatılmaz. Ayrı admin Deploy/Release
 işlemi sürerken eşzamanlı canlı efekt yayını engellenir.
+
+
+### Admin'de site keşfi ve tek ekran (2026-11-02)
+
+Yeni Admin görünümünde site listesi `YardimciAsistan/config/installations.json`
+kaynağından üretilir. Yalnız site/landing kurulumları keşfedilir; efekt
+hedefleri ise sayfa tasarımında sabit `<img src>` ile başvurulan fotoğraflar
+ve önceden açıkça kayıtlı sabit görsellerdir. Dinamik ürün/galeri/oda/masa
+medyası ve tanıtım vitrininin uygulama ekran görüntüleri kapsam dışıdır.
+`config/projects.json` yalnız mevcut BlackSea/Gündoğdu görsel ve yayın
+eşleşmeleri için overlay olarak kalır. Testlerde `EFEKT_STUDIO_PROJECTS_FILE`
+ile tam izole özel fixture kullanılabilir.
+
+Admin'in dış kaydırması yoktur: site görsel gezgini, sahne listesi ve sağ
+ayarlar bağımsız kaydırılır; editör önizlemesi sabit çalışma alanını doldurur.
+Kaydedilen sahne için kaynak fotoğraf hash'i ayrı sidecar'da izlenir; fotoğraf
+sonradan değişirse eski taslak kendiliğinden yüklenip yayınlanmaz.
+Bağlanmamış sabit görseller yerelde düzenlenebilir; canlı yayın düğmeleri doğru
+şekilde kapalı kalır. Teknikel'in API-kaynaklı ürün fotoğrafları özellikle
+keşfedilmez; ileride sabit dekoratif tasarım fotoğrafı eklenirse bu görsel
+Atölye'de listelenebilir. Veri kaybı ve test sahnesi
+temizliği bu hazırlığın zorunlu adımı değildir.
+
+
+#### Sabit görseli ilk kez bağlama
+
+Ortak site şablonu 0.5.2, `public/assets/site/scenes/effects-manifest.json`
+içinde sabit site fotoğrafı için kaynak `src` yolu, tekil slot ve sahne
+dosyasını eşler. Tasarımdaki `<img>` niteliğini yeniden düzenlemek gerekmez;
+dinamik ürün/oda/masa/galeri görselleri desteklenmez. Atölye'de bağlantısız
+ama **aktif sitede kullanılan** sabit fotoğraf seçilerek bir görünür efekt
+taslağı kaydedildiğinde **Siteye bağlamayı hazırla** etkinleşir.
+Bu yalnız yerel sitenin `public/assets/site/scenes/` klasörüne sahne ve
+manifest yazar. Demo test alanında düz `deneme/assets/site/scenes/`
+yoluna yazar. Başarılı hazırlık `Site deploy'u bekliyor` olarak görünür.
+Sahne ve manifestin live siteye geçmesi için ayrı site deploy/HTTPS kabul
+gerekir. `canonical/` klasörü aktif deploy tarafından kullanılmıyorsa
+otomatik hazırlama kapalı kalır. BlackSea ve Gündoğdu'nun önceden bağlı
+hero sahneleri ise aynı hedefli yayın yollarını korur.
+
+Hazırlık sonrası Admin'deki **Deploy ekranını aç** bağlantısı yalnız açıkça
+eşlenmiş hedefleri kullanır (bugün yalnız `landing → landing`). Site kimliğinden
+veya adından hedef tahmin edilmez. Bağlantı yalnız Deploy ekranına geçer ve
+hedefi seçer; ön kontrol, onay veya canlı yayın başlatmaz. Kaynak fotoğraf
+hash'i değiştiğinde veya hedef yolu geçersiz olduğunda `canPrepare` kapanır.
+Teknikel'in hero görseli API ürün/galeri medyası olduğundan sabit görsel
+listesi boş kalır; ürün/galeriye efekt bağlama işlemi önerilmez. Teknikel'in
+`teknikel-web` Admin hedefi de site aktarımı değil, yalnız web modülü
+güncellemesidir ve Deploy ekranında bu kapsam ayrıca açıklanır.
+İlgili izole kontroller: `admin-studio.test.mjs`, `site-projects.test.mjs`,
+`site-preparation.test.mjs`, `site-flat-preparation.test.mjs`.
+
+
+Sabit görseller için ortak şablonda artık tek etkinleştirme kuralı
+`effects-manifest.json` kaydıdır. Eski `config.effects` ve
+`data-effect-slot` uyumluluğu kaldırıldı. BlackSea hero sahnesi
+manifest'e taşındı. Gündoğdu'nun bağımsız aktif PHP sitesi ise
+kendi `hero-effects.mjs` köprüsüne hâlâ ihtiyaç duyar;
+henüz canonical site şablonuna taşınmış değildir.
+
+Hazırlanmış sahne daha sonra düzenlenebilir: Yerel sahneyi güncelle,
+manifest girişlerini çoğaltmadan yalnız yerel sahne dosyasını yeniler.
+Fotoğraf hash değişiminde eski sahne kullanılamaz; canlı deploy yoktur.
