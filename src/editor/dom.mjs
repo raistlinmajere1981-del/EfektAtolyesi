@@ -19,7 +19,7 @@ export function download(text,name) {
 export function readFile(file,asData=false) {
   return new Promise((resolve,reject)=>{
     const reader=new FileReader(); reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Dosya okunamadı.'));
-    asData?reader.readAsDataURL(file):reader.readAsText(file);
+    if(asData) reader.readAsDataURL(file); else reader.readAsText(file);
   });
 }
 export function field(label,input) {return el('label',{class:'field'},el('span',{text:label}),input);}

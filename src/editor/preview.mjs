@@ -2,7 +2,7 @@ import {previewScene} from './effect-actions.mjs';
 import {createOverlay,compileScene} from '../runtime/index.mjs';
 import {imageTransform,toPhoto,toScreen} from './geometry.mjs';
 
-export function createPreview({host,image,svg,stats,onError}) {
+export function createPreview({host,image,stats,onError}) {
   let soloId=null;
   let overlay=null,scene=null,timer=null,playing=true,compare=false,fit='contain',version=0;
   async function loadPhoto(photo) {
