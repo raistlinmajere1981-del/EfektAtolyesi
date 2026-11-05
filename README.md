@@ -41,7 +41,10 @@ node .test-artifacts/browser-smoke-1.1.cjs
 
 Kontrol mevcut düzenleme akışını, yeni kontrolleri, JSON aktarımını, dört farklı çokgende gerçek Canvas parıltı piksellerini, statik karşılaştırmayı ve 390 px görünümü doğrular. Ekran görüntüleri `.test-artifacts/editor-1.1.png` ve `.test-artifacts/editor-1.1-mobile.png` olarak kaydedilir.
 
-BlackSea fotoğrafı ve proje örneği: `http://127.0.0.1:8095/?example=blacksea`. Fotoğraf 1536×1024; kullanım hakkı BlackSea sitesine bağlıdır. Gündoğdu için varsayılan 1818×1228 Gideros örneğini kullanın. Düzenle → JSON dışa aktar → hedef sitede `bash scripts/install-effect-scene.sh ~/Downloads/file.json --check-only` → aynı komutu `--check-only` olmadan çalıştır → yerelde doğrula → onay sonrası site-only deploy. Ayrıntı: hedef sitenin `docs/EFFECT_ENGINE.md` dosyası. Aktif JSON kurulana kadar iki site statik fotoğraf gösterir.
+BlackSea örnek görseli ve proje kaynağı: http://127.0.0.1:8095/?example=blacksea.
+Gündoğdu 1818×1228 Gideros sahnesini Admin Efekt Atölyesi'nde kaydedip
+Siteye yayınla ile günceller. Eski install-effect-scene.sh Gündoğdu'nun
+kanonik ana sayfasını güncellemez; site docs/EFFECT_ENGINE.md geçerlidir.
 
 
 ## Admin Panel içinde çalışma (2026-10)
@@ -60,13 +63,14 @@ proje/görsel seçimi, taslak kaydı ve hedefli yayın işlemleri için köprü 
   tüm-site paketleri bu işlemde yüklenmez. BlackSea Natro FTP kimlik bilgileri
   mevcut Yardımcı Asistan yerel credentials kaydından okunur. HTTPS sahne
   içeriği ayrıca karşılaştırılarak doğrulanır.
-- Gündoğdu'nun **aktif site kökü** için hero bağlantısı,
-  `assets/img/gideros-1-1818.webp` ile
-  `assets/effects/hero.scene.json` üzerinden çalışır. SSH/rsync hedefi
-  sitenin mevcut `scripts/deploy-site.sh` yolu ile eşleşir. Canlı aktarım
-  başlatılmadan önce kullanıcı onayı ve diğer Admin işlem kilitleri gerekir.
-  Gündoğdu `canonical/` şablon kaynakları ayrı olup otomatik site-only
-  deploy varmış gibi gösterilmez.
+- **Gündoğdu (2026-11-05):** Aktif ana sayfa hedefi
+  `assets/site/img/gideros-1-1818.webp` fotoğrafına bağlıdır.
+  `hero.scene.json` ve `effects-manifest.json` hem
+  `canonical/public/assets/site/scenes` hem `assets/site/scenes` altında
+  eşit içerikle tutulur. SSH yalnız bu dört site dosyasını aktarır;
+  web modülü veya tam site deploy edilmez. HTTPS scene + manifest
+  doğrulanmadan başarı dönmez. Eski `assets/effects/hero.scene.json`
+  yolu aktif site tarafından okunmaz.
 - Yeni efekt türü için `src/registry/effects.mjs` kayıt ve ayrı runtime
   modülü gerekir. Site runtime kopyası yeni efekti tanımadan o efektli sahne
   yayınlanmamalıdır. Atölye çekirdeği hiçbir siteye bağımlı değildir.
@@ -136,9 +140,9 @@ güncellemesidir ve Deploy ekranında bu kapsam ayrıca açıklanır.
 Sabit görseller için ortak şablonda artık tek etkinleştirme kuralı
 `effects-manifest.json` kaydıdır. Eski `config.effects` ve
 `data-effect-slot` uyumluluğu kaldırıldı. BlackSea hero sahnesi
-manifest'e taşındı. Gündoğdu'nun bağımsız aktif PHP sitesi ise
-kendi `hero-effects.mjs` köprüsüne hâlâ ihtiyaç duyar;
-henüz canonical site şablonuna taşınmış değildir.
+manifest'e taşındı. Gündoğdu da kanonik `core/effects.mjs`
+ve `effects-manifest.json` yolunu kullanır; eski `hero-effects.mjs`
+ve `assets/effects` yolu aktif yayının parçası değildir.
 
 Hazırlanmış sahne daha sonra düzenlenebilir: Yerel sahneyi güncelle,
 manifest girişlerini çoğaltmadan yalnız yerel sahne dosyasını yeniler.

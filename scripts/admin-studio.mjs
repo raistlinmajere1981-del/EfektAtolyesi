@@ -371,10 +371,75 @@ function execute(command,args,{input,env,cwd}={}){
   child.stdout.on("data",b=>{output+=b.toString();if(output.length>80000)child.kill();});
   child.stderr.on("data",b=>{error+=b.toString();if(error.length>80000)child.kill();});
   child.on("error",reject);
+  child.stdin.on("error",()=>{}); // Short-lived rsync/ssh can close stdin before .end().
   child.on("close",code=>code===0?resolve(output.trim()):reject(Error(error.trim()||("Komut başarısız: "+command+" "+code))));
   child.stdin.end(input??"");
  });
 }
+
+// The current Gündoğdu canonical site reads a manifest from canonical/public,
+// while browsers load the mirrored /assets/site/scenes URL. The legacy
+// assets/effects/hero.scene.json route does neither. Only this approved hero
+// route publishes both mirrors; other project routes remain unchanged.
+async function publishGundogduHero(project,image,contents) {
+ const source="site/img/gideros-1-1818.webp";
+ const host="yardimciasistangunduodu@ssh-yardimciasistangunduodu.alwaysdata.net";
+ const root="/home/yardimciasistangunduodu/www";
+ if(image.photo!=="assets/"+source||image.scene!=="assets/site/scenes/hero.scene.json"||
+   image.upload?.type!=="ssh-rsync"||image.upload.host!==host||
+   image.upload.remote!==root+"/assets/site/scenes/hero.scene.json")
+   throw Error("Gündoğdu'nun kanonik hero yayın sözleşmesi değişmiş.");
+ const paths=["canonical/public/assets/site/scenes/hero.scene.json",
+   "assets/site/scenes/hero.scene.json",
+   "canonical/public/assets/site/scenes/effects-manifest.json",
+   "assets/site/scenes/effects-manifest.json"];
+ const canonicalManifest=fileFor(project,paths[2]);
+ let manifest={version:1,bindings:[]};
+ if(existsSync(canonicalManifest)){
+   const raw=await readFile(canonicalManifest,"utf8");
+   if(Buffer.byteLength(raw)>16*1024)throw Error("Efekt manifesti çok büyük.");
+   manifest=JSON.parse(raw);
+ }
+ if(manifest.version!==1||!Array.isArray(manifest.bindings)||manifest.bindings.length>32)
+   throw Error("Kanonik site efekt manifesti geçersiz.");
+ for(const b of manifest.bindings){
+   if(!b||Object.keys(b).sort().join(",")!=="scene,slot,source"||
+     !/^site\/(?:img|media)\/[a-zA-Z0-9_/-]+\.(?:jpe?g|webp|png|avif)$/.test(b.source)||
+     !/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]{0,99}$/.test(b.slot)||
+     !/^[a-z0-9_-]{1,64}\.scene\.json$/.test(b.scene))
+     throw Error("Mevcut efekt manifestinde geçersiz bağlantı var.");
+ }
+ manifest.bindings=manifest.bindings.filter(b=>b.source!==source&&b.slot!=="hero");
+ manifest.bindings.push({source,slot:"hero",scene:"hero.scene.json"});
+ const manifestText=JSON.stringify(manifest,null,2)+"\n";
+ if(Buffer.byteLength(manifestText)>16*1024)throw Error("Kanonik efekt manifesti boyut sınırını aştı.");
+ // The local site release must retain the same four site-owned assets.
+ for(const path of paths){
+   await saveAtomic(fileFor(project,path),path.endsWith("effects-manifest.json")?manifestText:contents);
+ }
+ const sshArgs=["-o","BatchMode=yes","-o","ConnectTimeout=12","-o","StrictHostKeyChecking=yes",host];
+ const preflight="set -Eeuo pipefail; "+
+   "test -f "+root+"/canonical/core/render.php; "+
+   "test -d "+root+"/canonical/public/assets/site/scenes; "+
+   "test -d "+root+"/assets/site/scenes; "+
+   "test -f "+root+"/assets/site/img/gideros-1-1818.webp";
+ await execute("ssh",[...sshArgs,preflight]);
+ const transport="ssh -o BatchMode=yes -o ConnectTimeout=12 -o StrictHostKeyChecking=yes";
+ // Scene files first; only then the renderer's manifest. No legacy paths or web module changes.
+ for(const path of paths)await execute("rsync",[
+   "-az","--chmod=F644","-e",transport,fileFor(project,path),host+":"+root+"/"+path
+ ]);
+ const url="https://yardimciasistangunduodu.alwaysdata.net/assets/site/scenes/";
+ const onlineScene=await httpJson(url+"hero.scene.json");
+ if(exportProject(importProject(JSON.stringify(onlineScene)))!==contents)
+   throw Error("Gündoğdu canlı efekt sahnesi yerel sürümle uyuşmuyor.");
+ const onlineManifest=await httpJson(url+"effects-manifest.json");
+ if(onlineManifest.version!==1||!Array.isArray(onlineManifest.bindings)||
+   !onlineManifest.bindings.some(b=>b.source===source&&b.slot==="hero"&&b.scene==="hero.scene.json"))
+   throw Error("Gündoğdu canlı efekt manifesti doğrulanamadı.");
+ return {ok:true,message:"Gündoğdu ana sayfa efekti ve kanonik manifest canlıda doğrulandı.",siteUrl:project.siteUrl};
+}
+
 async function publish(id){
  const found=await selected(id);
  if(found.kind==="scene")throw Error("Yerel V2 çalışma sahnesi yayınlanamaz. Site deploy veya publish bu hedef için kapalıdır.");
@@ -390,6 +455,8 @@ async function publish(id){
  checkScene(scene,image);
  const target=fileFor(project,image.scene);
  const contents=exportProject(scene);
+ if(!process.env.EFEKT_STUDIO_PROJECTS_FILE&&project.id==="gundogdu"&&image.id==="hero")
+   return publishGundogduHero(project,image,contents);
  // Local source update is kept if the network fails, so retry does not lose work.
  await saveAtomic(target,contents);
  if(upload.type==="natro-ftp"){

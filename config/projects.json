@@ -33,17 +33,17 @@
         {
           "id": "hero",
           "name": "Ana sayfa · Gideros hero",
-          "photo": "assets/img/gideros-1-1818.webp",
-          "photoRef": "assets/gideros-1-1818.webp",
+          "photo": "assets/site/img/gideros-1-1818.webp",
+          "photoRef": "assets/site/img/gideros-1-1818.webp",
           "width": 1818,
           "height": 1228,
-          "scene": "assets/effects/hero.scene.json",
+          "scene": "assets/site/scenes/hero.scene.json",
           "upload": {
             "type": "ssh-rsync",
             "host": "yardimciasistangunduodu@ssh-yardimciasistangunduodu.alwaysdata.net",
-            "remote": "/home/yardimciasistangunduodu/www/assets/effects/hero.scene.json"
+            "remote": "/home/yardimciasistangunduodu/www/assets/site/scenes/hero.scene.json"
           },
-          "publicSceneUrl": "https://yardimciasistangunduodu.alwaysdata.net/assets/effects/hero.scene.json"
+          "publicSceneUrl": "https://yardimciasistangunduodu.alwaysdata.net/assets/site/scenes/hero.scene.json"
         }
       ]
     }
