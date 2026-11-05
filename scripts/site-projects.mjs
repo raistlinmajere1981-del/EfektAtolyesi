@@ -75,8 +75,8 @@ function dimensions(file) {
 function candidateFiles(root, ref) {
   if (ref.startsWith("site/")) return [
     join(root,"public/assets", ref),
-    join(root,"canonical/public/assets", ref),
-    join(root,"assets", ref) // demo lab flat installation layout
+    join(root,"assets", ref), // published site-owned mirror takes precedence
+    join(root,"canonical/public/assets", ref) // template fallback
   ];
   if (ref.startsWith("assets/")) return [join(root, ref)];
   return [];
