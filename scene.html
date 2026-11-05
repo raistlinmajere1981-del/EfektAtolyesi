@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Efekt Atölyesi — Nesne sahnesi (yerel önizleme)</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="scene.css">
+  <script type="module" src="src/editor/scene-main.mjs"></script>
+</head>
+<body>
+  <header class="scene-topbar">
+    <div class="scene-brand">
+      <span class="scene-mark" aria-hidden="true">✳</span>
+      <div><h1>Nesne Sahnesi</h1><p>Yerel V2 sözleşme düzenleyicisi</p></div>
+      <span class="scene-version">v2 · sceneObject</span>
+    </div>
+    <p class="scene-local-warning">Yerel sözleşme önizlemesi — gerçek V2 bağlantısı değil</p>
+    <nav class="scene-actions" aria-label="Proje işlemleri">
+      <button type="button" id="open-project">Proje aç</button>
+      <input id="project-file" class="visually-hidden" type="file" accept=".json,application/json" aria-label="V2 JSON proje dosyası">
+      <button type="button" id="export">JSON dışa aktar</button>
+      <button type="button" id="reset">↺ Fikstürü yükle</button>
+    </nav>
+  </header>
+
+  <main class="scene-workspace">
+    <aside class="scene-panel scene-library" aria-label="Sahne nesneleri ve efektler">
+      <div class="scene-panel-heading"><span class="scene-eyebrow">SAHNE</span><span class="scene-local-badge">Yerel</span></div>
+      <label class="scene-field">Proje adı<input id="scene-name" maxlength="160"></label>
+      <p class="scene-help" id="scene-id-line"></p>
+      <div class="scene-section-title"><h2>Nesneler</h2><span id="object-count" class="scene-count">0</span></div>
+      <div id="object-list" class="scene-list"></div>
+      <div class="scene-divider"></div>
+      <div class="scene-section-title"><h2>Seçili nesnenin efektleri</h2><span id="effect-count" class="scene-count">0</span></div>
+      <div id="effect-list" class="scene-list"></div>
+      <label class="scene-field"><span>Yeni efekt türü</span><select id="add-effect-type"></select></label>
+      <button type="button" id="add-effect" class="scene-full">＋ Seçili bağlantıya efekt ekle</button>
+      <p class="scene-help">Efektler yalnız seçili nesnenin adlandırılmış bağlantı noktasına bağlanır.</p>
+    </aside>
+
+    <section class="scene-stage-column" aria-label="Nesne sahnesi önizlemesi">
+      <div class="scene-stage-heading">
+        <div><span class="scene-eyebrow">ÇALIŞMA ALANI</span><h2>Yerel yerleşim önizlemesi</h2></div>
+        <div class="scene-toolbar">
+          <button type="button" id="undo" aria-label="Geri al" title="Geri al (Ctrl/⌘ Z)">↶</button>
+          <button type="button" id="redo" aria-label="Yinele" title="Yinele (Ctrl/⌘ Shift Z)">↷</button>
+          <button type="button" id="play" aria-pressed="true">Ⅱ Duraklat</button>
+        </div>
+      </div>
+      <div id="scene-viewport" class="scene-viewport" aria-label="Normalleştirilmiş sahne görünümü">
+        <div id="scene-objects" class="scene-objects"></div>
+        <div id="scene-markers" class="scene-markers"></div>
+      </div>
+      <p class="scene-help scene-stage-help">Nesne yerleşimleri basit yerel yer tutuculardır. Alev, ışık halesi ve duman gerçek kanonik Canvas motoruyla çizilir. Turuncu hedefi sürükleyerek efekt kaydırmasını değiştirin.</p>
+      <div id="status" class="scene-status" role="status" aria-live="polite">Sahne yükleniyor…</div>
+      <div id="preview-status" class="scene-preview-status" role="status">Önizleme hazırlanıyor…</div>
+    </section>
+
+    <aside class="scene-panel scene-inspector" aria-label="Nesne ve efekt özellikleri">
+      <div class="scene-panel-heading"><span class="scene-eyebrow">ÖZELLİKLER</span><span class="scene-version">YEREL</span></div>
+      <section id="object-inspector"></section>
+      <div class="scene-divider"></div>
+      <section id="effect-inspector"></section>
+      <div class="scene-divider"></div>
+      <label class="scene-field">Sahne tohumu<input id="scene-seed" maxlength="120" spellcheck="false"></label>
+      <p class="scene-help">Aynı tohum + aynı sahne = aynı başlangıç. Tüm değişiklikler v2 doğrulamasından geçer.</p>
+    </aside>
+  </main>
+  <footer class="scene-footer"><span>EFEKT ATÖLYESİ <span>/ nesne sahnesi</span></span><span>Yerel sözleşme · gerçek V2 sitesine bağlı değil</span></footer>
+  <noscript>Bu yerel düzenleyiciyi kullanmak için JavaScript’i etkinleştirin.</noscript>
+</body>
+</html>

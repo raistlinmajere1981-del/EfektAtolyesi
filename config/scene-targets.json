@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "targets": [
+    {
+      "project": "birdesengor",
+      "projectName": "BirDeSenGör (yerel çalışma)",
+      "target": "scene_v2",
+      "name": "BirDeSenGör V2 · çalışma sahnesi",
+      "kind": "sceneObject",
+      "sceneId": "birdesengor-study-v2",
+      "seed": "birdesengor-study-v2-local",
+      "sourcePath": "examples/birdesengor-v2.scene.json",
+      "viewport": { "width": 1600, "height": 900 },
+      "note": "Yalnız yerel V2 sözleşme fikstürüdür. Gerçek site kurulumu veya canlı yayın hedefi değildir."
+    }
+  ]
+}
