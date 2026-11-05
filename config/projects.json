@@ -74,11 +74,11 @@
         },
         {
           "id": "about_hero",
-          "name": "Hakkımızda · Gökçekale",
-          "photo": "assets/site/img/hero-about.webp",
-          "photoRef": "assets/site/img/hero-about.webp",
+          "name": "Hakkımızda · Çukurçal / Küre Dağları",
+          "photo": "assets/site/img/hero-about-cide-landscape.webp",
+          "photoRef": "assets/site/img/hero-about-cide-landscape.webp",
           "width": 1600,
-          "height": 1063,
+          "height": 1200,
           "scene": "assets/site/scenes/about_hero.scene.json"
         },
         {
