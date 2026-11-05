@@ -1,4 +1,4 @@
-import {readFile,writeFile,rename,mkdir,stat} from "node:fs/promises";
+import {readFile,writeFile,rename,mkdir,stat,chmod} from "node:fs/promises";
 import {existsSync,readFileSync} from "node:fs";
 import {dirname,resolve,join,sep,basename} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -415,7 +415,9 @@ async function publishGundogduHero(project,image,contents) {
  if(Buffer.byteLength(manifestText)>16*1024)throw Error("Kanonik efekt manifesti boyut sınırını aştı.");
  // The local site release must retain the same four site-owned assets.
  for(const path of paths){
-   await saveAtomic(fileFor(project,path),path.endsWith("effects-manifest.json")?manifestText:contents);
+   const destination=fileFor(project,path);
+   await saveAtomic(destination,path.endsWith("effects-manifest.json")?manifestText:contents);
+   await chmod(destination,0o644); // Public site assets must stay readable after a future full-site release.
  }
  const sshArgs=["-o","BatchMode=yes","-o","ConnectTimeout=12","-o","StrictHostKeyChecking=yes",host];
  const preflight="set -Eeuo pipefail; "+
