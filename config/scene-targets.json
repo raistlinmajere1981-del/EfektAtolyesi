@@ -3,15 +3,15 @@
   "targets": [
     {
       "project": "birdesengor",
-      "projectName": "BirDeSenGör (yerel çalışma)",
+      "projectName": "BirDeSenGör",
       "target": "scene_v2",
-      "name": "BirDeSenGör V2 · çalışma sahnesi",
+      "name": "BirDeSenGör V2 · site kaynak sahnesi",
       "kind": "sceneObject",
       "sceneId": "birdesengor-study-v2",
       "seed": "birdesengor-study-v2-local",
-      "sourcePath": "examples/birdesengor-v2.scene.json",
+      "sourcePath": "/home/raistlin/ChannelFoundry/channels/birdesengor/web/src/effects/birdesengor-effects.v2.json",
       "viewport": { "width": 1600, "height": 900 },
-      "note": "Yalnız yerel V2 sözleşme fikstürüdür. Gerçek site kurulumu veya canlı yayın hedefi değildir."
+      "note": "V2 site kaynak sahnesi / yerel önizleme, canlı yayın ayrı. Fiziksel yerleşim site manifestine kilitlidir."
     }
   ]
 }

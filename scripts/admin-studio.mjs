@@ -7,6 +7,7 @@ import {spawn,execFileSync} from "node:child_process";
 import {importProject,exportProject,validateProject,MAX_FILE_BYTES} from "../src/model/project.mjs";
 import {compileScene} from "../src/runtime/index.mjs";
 import {discoverSiteProjects} from "./site-projects.mjs";
+import {BIRDESENGOR_SITE,SITE_SCENE,siteSceneSource} from "./birdesengor-site.mjs";
 
 const studioRoot=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const workspace=process.env.EFEKT_STUDIO_WORKSPACE ? resolve(process.env.EFEKT_STUDIO_WORKSPACE) : resolve(studioRoot,"..");
@@ -20,8 +21,12 @@ const idOf=(p,i)=>p.id+":"+i.id;
 const safeId=(id)=>/^[a-z0-9_-]+:[a-z0-9_-]+$/.test(id);
 const safePart=(value)=>/^[a-z0-9_-]+$/.test(value);
 
-// Local V2 scenes are an explicit, narrow registry. They are never discovered
-// from sites, never point at a production path and never gain publish routes.
+// Only the installed explicit target can stage the local site source. Custom
+// registries keep their fixture-only contract and never gain a site writer.
+const trustedScene=target=>!process.env.EFEKT_STUDIO_SCENE_TARGETS_FILE&&!process.env.EFEKT_STUDIO_PROJECTS_FILE&&
+ target.project==="birdesengor"&&target.target==="scene_v2"&&target.sceneId==="birdesengor-study-v2"&&
+ target.sourcePath===join(BIRDESENGOR_SITE,SITE_SCENE)&&target.viewport?.width===1600&&target.viewport?.height===900;
+const siteSource=siteSceneSource();
 async function sceneTargets(){
  if(!existsSync(sceneRegistryFile))return [];
  const registry=JSON.parse(await readFile(sceneRegistryFile,"utf8"));
@@ -35,8 +40,8 @@ async function sceneTargets(){
   if(target.kind!=="sceneObject")throw Error("Yerel V2 hedefi yalnız sceneObject olabilir.");
   for(const [key,max] of [["name",160],["sceneId",120],["seed",120]])
    if(typeof target[key]!=="string"||!target[key].trim()||target[key].length>max)throw Error(`Yerel V2 sahne alanı geçersiz: ${key}`);
-  if(typeof target.sourcePath!=="string"||target.sourcePath.includes("..")||
-    !/^examples\/[a-z0-9_-]+\.scene\.json$/.test(target.sourcePath))
+  if(!trustedScene(target)&&(typeof target.sourcePath!=="string"||target.sourcePath.includes("..")||
+    !/^examples\/[a-z0-9_-]+\.scene\.json$/.test(target.sourcePath)))
    throw Error("Yerel V2 sahne kaynağı examples/ altında olmalı.");
   if(!target.viewport||!Number.isInteger(target.viewport.width)||!Number.isInteger(target.viewport.height)||
     target.viewport.width<1||target.viewport.height<1||target.viewport.width>20000||target.viewport.height>20000)
@@ -50,7 +55,7 @@ const usesLocalSceneTargets=()=>Boolean(process.env.EFEKT_STUDIO_SCENE_TARGETS_F
 const sceneTargetId=(target)=>target.project+":"+target.target;
 function sceneTargetImage(target,id){
  return {id:target.target,name:target.name,available:true,hasDraft:existsSync(draftPath(id)),hasScene:true,
-  canPublish:false,canPrepare:false,kind:"sceneObject",note:target.note??"Yerel V2 çalışma sahnesi; yayın hedefi değildir.",
+  canPublish:false,canPrepare:trustedScene(target),siteSource:trustedScene(target),kind:"sceneObject",note:target.note??"Yerel V2 çalışma sahnesi; yayın hedefi değildir.",
   sourcePath:target.sourcePath,width:target.viewport.width,height:target.viewport.height};
 }
 function mergeSceneTargets(imageProjects,scenes){
@@ -59,7 +64,7 @@ function mergeSceneTargets(imageProjects,scenes){
   const id=sceneTargetId(target),image=sceneTargetImage(target,id);
   const existing=merged.find(project=>project.id===target.project);
   if(existing){if(!existing.images.some(item=>idOf(existing,item)===id))existing.images.push(image);continue;}
-  merged.push({id:target.project,name:target.projectName??target.project,siteUrl:"",note:"Yerel V2 çalışma hedefi · kurulu site değil",images:[image]});
+  merged.push({id:target.project,name:target.projectName??target.project,siteUrl:"",note:target.note,images:[image]});
  }
  return merged;
 }
@@ -102,18 +107,42 @@ function checkSceneTargetScene(scene,target){
  return scene;
 }
 async function loadSceneTarget(target,id){
+ if(trustedScene(target)){
+  const state=await siteSource.snapshot();
+  let scene=checkSceneTargetScene(state.scene,target),source="installed",message="V2 site kaynak sahnesi / yerel önizleme, canlı yayın ayrı.";
+  if(existsSync(draftPath(id))){
+   try{
+    const draft=checkSceneTargetScene(importProject(await readFile(draftPath(id),"utf8")),target);
+    siteSource.validate(draft,state);
+    if(!existsSync(draftHashPath(id))||(await readFile(draftHashPath(id),"utf8")).trim()!==state.sourceHash)throw Error("Kaynak sürümü uyuşmuyor.");
+    scene=draft;source="draft";
+   }catch{
+    message="Eski taslak güncel site kaynağıyla uyuşmuyor; güncel kaynak açıldı. Eski dosya korunuyor; Kaydet bu hedefin taslağını yeniler.";
+   }
+  }
+  return {scene,source,message,sourceHash:state.sourceHash,previewImage:await siteSource.preview(state),siteSource:true,
+   readiness:siteSource.readiness(scene,state)};
+ }
  const draft=draftPath(id),source=within(studioRoot,target.sourcePath);
  if(existsSync(draft))return {scene:checkSceneTargetScene(importProject(await readFile(draft,"utf8")),target),source:"draft"};
  if(!existsSync(source))throw Error("Yerel V2 fikstürü bulunamadı.");
  return {scene:checkSceneTargetScene(importProject(await readFile(source,"utf8")),target),source:"installed"};
 }
-async function saveSceneTarget(target,id,input){
+async function saveSceneTarget(target,id,input,sourceHash){
  if(typeof input!=="object"||!input)throw Error("Sahne bulunamadı.");
  const scene=checkSceneTargetScene(structuredClone(input),target);
+ let readiness;
+ if(trustedScene(target)){
+  const state=await siteSource.snapshot();
+  if(!sourceHash||sourceHash!==state.sourceHash)throw Error("Site kaynağı değişmiş; güncel sahneyi yeniden açın.");
+  siteSource.validate(scene,state);
+  readiness=siteSource.readiness(scene,state);
+ }
  const contents=exportProject(scene);
  if(Buffer.byteLength(contents)>MAX_FILE_BYTES)throw Error("Sahne sınırı aşıldı.");
  await saveAtomic(draftPath(id),contents);
- return {ok:true,message:"Yerel V2 taslağı kaydedildi. Yayın hedefi değildir.",effectCount:scene.effects.length};
+ if(trustedScene(target))await saveAtomic(draftHashPath(id),sourceHash+"\n");
+ return {ok:true,message:"Yerel V2 taslağı kaydedildi. Canlı yayın ayrı.",effectCount:scene.effects.length,readiness};
 }
 function draftPath(id){if(!safeId(id))throw Error("Geçersiz hedef.");return join(draftsRoot,id.replace(":","__")+".scene.json");}
 function draftHashPath(id){return draftPath(id)+".source.sha256";}
@@ -234,7 +263,14 @@ async function activate(id){
 }
 async function prepare(id) {
  const found=await selected(id);
- if(found.kind==="scene")throw Error("Yerel V2 çalışma sahnesi için site hazırlığı yoktur; yalnız yerel taslak kaydedilir.");
+ if(found.kind==="scene"){
+  if(!trustedScene(found.target))throw Error("Yerel V2 çalışma sahnesi için site hazırlığı yoktur; yalnız yerel taslak kaydedilir.");
+  if(!existsSync(draftPath(id))||!existsSync(draftHashPath(id)))throw Error("Önce güncel site taslağını kaydedin.");
+  const scene=checkSceneTargetScene(importProject(await readFile(draftPath(id),"utf8")),found.target);
+  const result=await siteSource.stage(scene,(await readFile(draftHashPath(id),"utf8")).trim());
+  await saveAtomic(draftHashPath(id),result.sourceHash+"\n");
+  return {ok:true,...result,siteUrl:"",message:result.changed?"Yerel site kaynak dosyası hazırlandı. Canlı yayın/deploy yapılmadı.":"Site kaynak dosyası zaten aynı; yazılmadı. Canlı yayın ayrı."};
+ }
  const {project,image}=found;
  if(image.upload&&image.upload.type!=="disabled")throw Error("Bu görselin mevcut yayın bağlantısı zaten var.");
  const paths=stagedManifest(project,image);
@@ -297,7 +333,7 @@ async function saveAtomic(path,contents){
 }
 async function inspect(id){
  const found=await selected(id);
- if(found.kind==="scene")return {siteId:found.target.project,canPublish:false,canPrepare:false};
+ if(found.kind==="scene")return {siteId:found.target.project,canPublish:false,canPrepare:false}; // publish manager must never stage/deploy scenes
  const {project,image}=found;
  const linked=image.upload?.type!=="disabled"&&Boolean(image.upload);
  return {siteId:project.id,canPublish:linked||Boolean(publishedBinding(id,project,image)),
@@ -307,8 +343,13 @@ async function list(){
  return Promise.all((await projects()).map(async project=>{
  const images=await Promise.all((project.images??[]).map(async image=>{
  const id=idOf(project,image);
- if(image.kind==="sceneObject")return {...image,id,hasDraft:existsSync(draftPath(id)),
-  note:image.note??"Yerel V2 çalışma sahnesi; yayın hedefi değildir.",sourceHash:"",sourcePath:image.sourcePath??""};
+ if(image.kind==="sceneObject"){
+  if(image.siteSource){
+   try{await siteSource.snapshot();}
+   catch(error){return {...image,id,available:false,canPrepare:false,note:"Site kaynağı açılamadı: "+error.message};}
+  }
+  return {...image,id,hasDraft:existsSync(draftPath(id)),sourcePath:image.sourcePath??""};
+ }
  const photo=fileFor(project,image.photo),scene=fileFor(project,image.scene);
  const staged=hasStagedBinding(project,image);
   const verified=publishedBinding(id,project,image);
@@ -351,9 +392,9 @@ async function load(id) {
  scene.photo.src=preview;
  return {scene,source:existsSync(draftPath(id))?"draft":existsSync(fileFor(project,image.scene))?"installed":"new"};
 }
-async function save(id,input){
+async function save(id,input,sourceHash){
  const found=await selected(id);
- if(found.kind==="scene")return saveSceneTarget(found.target,id,input);
+ if(found.kind==="scene")return saveSceneTarget(found.target,id,input,sourceHash);
  const {image}=found;
  if(typeof input!=="object"||!input)throw Error("Sahne bulunamadı.");
  const scene=structuredClone(input);
@@ -497,7 +538,7 @@ export async function dispatch(action,args={}){
  if(action==="list")return list();
  if(action==="inspect")return inspect(args.id);
  if(action==="load")return load(args.id);
- if(action==="save")return save(args.id,args.scene);
+ if(action==="save")return save(args.id,args.scene,args.sourceHash);
  if(action==="prepare")return prepare(args.id);
  if(action==="activate")return activate(args.id);
  if(action==="publish")return publish(args.id);

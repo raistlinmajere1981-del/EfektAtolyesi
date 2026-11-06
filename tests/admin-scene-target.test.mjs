@@ -102,6 +102,13 @@ test("local V2 scene target saves/loads narrowly and rejects invalid/deploy inpu
     await assert.rejects(dispatch("publish",{id:"birdesengor:scene_v2"}),/yayınlanamaz/);
     assert.deepEqual(readdirSync(join(root,"drafts")),[ "birdesengor__scene_v2.scene.json" ]);
 
+    // Even a custom registry copying the installed target cannot inherit its
+    // absolute site path or staging privileges.
+    const installed=JSON.parse(readFileSync(new URL('../config/scene-targets.json',import.meta.url),'utf8'));
+    writeFileSync(process.env.EFEKT_STUDIO_SCENE_TARGETS_FILE,JSON.stringify(installed));
+    await assert.rejects(dispatch("load",{id:"birdesengor:scene_v2"}),/examples\//);
+    await assert.rejects(dispatch("prepare",{id:"birdesengor:scene_v2"}),/examples\//);
+
     // Without the explicit scene registry environment the admin returns only the
     // production image project list; no scene target is invented from site scan.
     delete process.env.EFEKT_STUDIO_SCENE_TARGETS_FILE;

@@ -7,6 +7,7 @@ import {bindObjectScene} from '../runtime/object-overlay.mjs';
 
 let scene=null,objectId=null,effectId=null,anchorId=null,playing=true;
 let previewHandle=null,previewFrame=null;
+let siteSource=false,showPhoto=true,showEffects=true;
 const objectElements=new Map(),markerElements=new Map();
 const history=new History();
 const embedded=new URLSearchParams(location.search).get('embedded')==='1';
@@ -79,7 +80,7 @@ function renderLists(){
       button(item.name,()=>selectObject(item.id),{class:'scene-row-select'}),
       el('span',{class:'scene-row-meta',text:`${count} efek`}),
       el('label',{class:'scene-row-check',title:`${item.name} görünür`},
-        el('input',{type:'checkbox',checked:item.visible,'aria-label':`${item.name} görünür`,onchange:event=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).visible=event.target.checked;})}))
+        el('input',{type:'checkbox',checked:item.visible,disabled:siteSource,'aria-label':`${item.name} görünür`,onchange:event=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).visible=event.target.checked;})}))
     );
   });
   $('#object-list').replaceChildren(...(rows.length?rows:[el('p',{class:'scene-empty',text:'Nesne yok.'})]));
@@ -121,6 +122,10 @@ function renderObjectInspector(){
     const point=anchorScenePoint(item,current.id);
     const px=Math.round(point.x*scene.viewport.width),py=Math.round(point.y*scene.viewport.height);
     host.append(el('p',{class:'scene-location'},el('strong',{text:'Görsel konum'}),el('br'),`Sahne: ${point.x.toFixed(4)} × ${point.y.toFixed(4)}`,el('br'),`${px} × ${py} px (${scene.viewport.width} × ${scene.viewport.height})`));
+  }
+  if(siteSource){
+    for(const input of host.querySelectorAll('input[type="number"],input[type="checkbox"]'))input.disabled=true;
+    host.append(el('p',{class:'scene-help',text:'Nesne pozu, görünürlüğü ve bağlantı koordinatları site kaynağına kilitli. Yalnız efekt kaydırması düzenlenir.'}));
   }
 }
 function renderEffectInspector(){
@@ -207,6 +212,7 @@ function bindPreview(){
   try{
     previewHandle=bindObjectScene(scene,id=>objectElements.get(id),{expectedSceneId:scene.sceneId});
     if(!playing)previewHandle.setPaused(true);
+    previewHandle.setEnabled(showEffects);
   }catch(e){previewHandle=null;error(e);}
 }
 function renderStage(){
@@ -297,6 +303,17 @@ function install(next,message,{resetHistory=false}={}){
   draw();
   status(message);
 }
+function installPreview(packet){
+  siteSource=packet.siteSource===true;
+  const preview=packet.previewImage;
+  if(preview!==undefined&&(typeof preview!=='string'||!/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(preview)))throw new Error('Site önizleme görseli geçersiz.');
+  const photo=$('#scene-photo');
+  if(preview)photo.src=preview;else photo.removeAttribute('src');
+  photo.hidden=!preview||!showPhoto;
+  $('#scene-viewport').classList.toggle('has-photo',Boolean(preview)&&showPhoto);
+  $('#show-photo').disabled=!preview;
+  $('#coordinate-help').textContent=siteSource?'Güncel oda fotoğrafı · 1600 × 900 kaynak düzlemi (object-fit: fill). Fiziksel kitap/kamera/vefk katmanları, yakınlaşma ve mobil pozlar bu önizlemeye dahil değil. Efektler yerel denemedir; site bağlantısı hazırlıkta denetlenir.':'Yerel sahne önizlemesi. Turuncu hedefi sürükleyerek yalnız efekt kaydırmasını değiştirin.';
+}
 function loadText(text,message,options){
   const next=importProject(text);
   if(!isObjectScene(next))throw new Error('Bu düzenleyici yalnız version 2 objectScene sahnelerini açar; v1 fotoğraf dosyası kabul edilmez.');
@@ -335,6 +352,25 @@ $('#play').onclick=()=>{
   $('#play').setAttribute('aria-pressed',String(playing));
   status(playing?'Önizleme oynatılıyor.':'Önizleme duraklatıldı; sahne değişiklikleri yine doğrulanır.');
 };
+$('#show-photo').onclick=()=>{
+  showPhoto=!showPhoto;
+  $('#scene-photo').hidden=!showPhoto;
+  $('#scene-viewport').classList.toggle('has-photo',showPhoto);
+  $('#show-photo').setAttribute('aria-pressed',String(showPhoto));
+};
+$('#show-guides').onclick=()=>{
+  const hidden=$('#scene-viewport').classList.toggle('hide-guides');
+  $('#show-guides').setAttribute('aria-pressed',String(!hidden));
+};
+$('#show-effects').onclick=()=>{
+  showEffects=!showEffects;previewHandle?.setEnabled(showEffects);
+  $('#show-effects').setAttribute('aria-pressed',String(showEffects));
+};
+new ResizeObserver(([entry])=>{
+  const ratio=(scene?.viewport.width??1600)/(scene?.viewport.height??900);
+  const width=Math.min(entry.contentRect.width,entry.contentRect.height*ratio);
+  Object.assign($('#scene-viewport').style,{width:`${width}px`,height:`${width/ratio}px`});
+}).observe(document.querySelector('.scene-stage-well'));
 $('#export').onclick=()=>{
   try{
     if(!scene)throw new Error('Önce sahne yükleyin.');
@@ -379,6 +415,7 @@ if(embedded){
     if(event.data.type==='studio:hello'){notify('studio:ready');return;}
     if(event.data.type==='studio:load'){
       try{
+        installPreview(event.data);
         loadText(JSON.stringify(event.data.scene),'Sahne hazır.',{resetHistory:true});
         notify('studio:loaded',{requestId:event.data.requestId});
       }catch(e){error(e);notify('studio:error',{message:e.message||String(e),requestId:event.data.requestId});}

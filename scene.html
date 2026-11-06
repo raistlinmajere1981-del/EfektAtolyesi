@@ -13,10 +13,10 @@
   <header class="scene-topbar">
     <div class="scene-brand">
       <span class="scene-mark" aria-hidden="true">✳</span>
-      <div><h1>Nesne Sahnesi</h1><p>Yerel V2 sözleşme düzenleyicisi</p></div>
+      <div><h1>Nesne Sahnesi</h1><p>V2 sahne düzenleyicisi</p></div>
       <span class="scene-version">v2 · sceneObject</span>
     </div>
-    <p class="scene-local-warning">Yerel sözleşme önizlemesi — gerçek V2 bağlantısı değil</p>
+    <p class="scene-local-warning">Yerel önizleme · canlı yayın ayrı</p>
     <nav class="scene-actions" aria-label="Proje işlemleri">
       <button type="button" id="open-project">Proje aç</button>
       <input id="project-file" class="visually-hidden" type="file" accept=".json,application/json" aria-label="V2 JSON proje dosyası">
@@ -42,18 +42,24 @@
 
     <section class="scene-stage-column" aria-label="Nesne sahnesi önizlemesi">
       <div class="scene-stage-heading">
-        <div><span class="scene-eyebrow">ÇALIŞMA ALANI</span><h2>Yerel yerleşim önizlemesi</h2></div>
+        <div><span class="scene-eyebrow">ÇALIŞMA ALANI</span><h2>V2 sahne önizlemesi</h2></div>
         <div class="scene-toolbar">
+          <button type="button" id="show-photo" aria-pressed="true" disabled>Fotoğraf</button>
+          <button type="button" id="show-guides" aria-pressed="true">İşaretler</button>
+          <button type="button" id="show-effects" aria-pressed="true">Efektler</button>
           <button type="button" id="undo" aria-label="Geri al" title="Geri al (Ctrl/⌘ Z)">↶</button>
           <button type="button" id="redo" aria-label="Yinele" title="Yinele (Ctrl/⌘ Shift Z)">↷</button>
           <button type="button" id="play" aria-pressed="true">Ⅱ Duraklat</button>
         </div>
       </div>
-      <div id="scene-viewport" class="scene-viewport" aria-label="Normalleştirilmiş sahne görünümü">
+      <div class="scene-stage-well">
+       <div id="scene-viewport" class="scene-viewport" aria-label="Normalleştirilmiş sahne görünümü">
+        <img id="scene-photo" class="scene-photo" alt="BirDeSenGör güncel çalışma odası" draggable="false" hidden>
         <div id="scene-objects" class="scene-objects"></div>
         <div id="scene-markers" class="scene-markers"></div>
+       </div>
       </div>
-      <p class="scene-help scene-stage-help">Nesne yerleşimleri basit yerel yer tutuculardır. Alev, ışık halesi ve duman gerçek kanonik Canvas motoruyla çizilir. Turuncu hedefi sürükleyerek efekt kaydırmasını değiştirin.</p>
+      <p class="scene-help scene-stage-help" id="coordinate-help">1600 × 900 kaynak koordinatları. Turuncu hedefi sürükleyerek yalnız efekt kaydırmasını değiştirin. Yakınlaşma ve mobil fiziksel pozlar siteye aittir.</p>
       <div id="status" class="scene-status" role="status" aria-live="polite">Sahne yükleniyor…</div>
       <div id="preview-status" class="scene-preview-status" role="status">Önizleme hazırlanıyor…</div>
     </section>
@@ -68,7 +74,7 @@
       <p class="scene-help">Aynı tohum + aynı sahne = aynı başlangıç. Tüm değişiklikler v2 doğrulamasından geçer.</p>
     </aside>
   </main>
-  <footer class="scene-footer"><span>EFEKT ATÖLYESİ <span>/ nesne sahnesi</span></span><span>Yerel sözleşme · gerçek V2 sitesine bağlı değil</span></footer>
+  <footer class="scene-footer"><span>EFEKT ATÖLYESİ <span>/ nesne sahnesi</span></span><span>Yerel önizleme · canlı yayın ayrı</span></footer>
   <noscript>Bu yerel düzenleyiciyi kullanmak için JavaScript’i etkinleştirin.</noscript>
 </body>
 </html>
