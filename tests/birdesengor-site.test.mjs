@@ -27,7 +27,7 @@ test('installed target opens exact CURRENT site objects/anchors/photo and safely
   assert.deepEqual(opened.scene,canonical);
   assert.ok(opened.scene.objects.some(object=>object.id==='vefk-stand'));
   assert.ok(!opened.scene.objects.some(object=>object.id==='parchment'));
-  assert.ok(opened.scene.objects.length>=16);
+  assert.equal(opened.scene.objects.length,14);
   assert.equal(opened.siteSource,true);
   assert.equal(opened.scene.previewImage,undefined);
   assert.equal(opened.previewImage,'data:image/webp;base64,'+readFileSync(join(BIRDESENGOR_SITE,'public/scene-assets/approved/room-workshop-free-2to1.webp')).toString('base64'));
@@ -41,8 +41,8 @@ test('installed target opens exact CURRENT site objects/anchors/photo and safely
   const edit=structuredClone(canonical);edit.effects[0].params.opacity=.71;
   await assert.rejects(invoke('save',{id,scene:edit},temp),/kaynağı değişmiş/);
   const result=await invoke('save',{id,scene:edit,sourceHash:opened.sourceHash},temp);
-  assert.equal(result.readiness.ready,true);assert.equal(result.readiness.mountedCount,6);
-  assert.equal(result.readiness.enabledCount,6);
+  assert.equal(result.readiness.ready,true);assert.equal(result.readiness.mountedCount,8);
+  assert.equal(result.readiness.enabledCount,edit.effects.filter(effect=>effect.enabled).length);
   assert.deepEqual((await invoke('load',{id},temp)).scene,edit);
   // Never call installed-target prepare from this test: it can write the real
   // local site source. Isolated staging below covers the writer safely.
@@ -63,9 +63,9 @@ test('isolated site staging validates slots, pose, current source hash and write
   const source=siteSceneSource(temp),state=await source.snapshot();
   const scene=structuredClone(state.scene);
   scene.name+=' · isolated staging test';
-  // All six allowlisted effect slots now mount through the canonical runtime.
+  // All eight allowlisted effect slots now mount through the canonical runtime.
   // The staged file is isolated: no test ever writes the real site source.
-  assert.equal(source.readiness(scene,state).mountedCount,6);
+  assert.equal(source.readiness(scene,state).mountedCount,8);
   assert.equal(source.readiness(scene,state).ready,true);
   const extra=structuredClone(scene);extra.effects.push({...structuredClone(scene.effects[0]),id:'manually-added'});
   await assert.rejects(source.stage(extra,state.sourceHash),/Desteklenmeyen site efekt yuvası/);
@@ -118,6 +118,10 @@ test('isolated site staging validates slots, pose, current source hash and write
   assert.equal(layoutDrift.mounted.ready,false);
   await assert.rejects(source.stage(another,layoutDrift.sourceHash),/bağlama sözleşmesi doğrulanamadı/);
   writeFileSync(cssFile,originalCss);
+  const rootFile=join(temp,'src/scene/SceneRoot.jsx');
+  writeFileSync(rootFile,actual.entries.get('src/scene/SceneRoot.jsx').toString().replace('onClick={()=>pulse(object.id)}','onClick={()=>undefined}'));
+  const disconnected=await source.snapshot();assert.equal(disconnected.mounted.ready,false);
+  await assert.rejects(source.stage(another,disconnected.sourceHash),/bağlama sözleşmesi/);
   rmSync(join(temp,'src/effects/effectsAdapter.js'));
   await assert.rejects(source.snapshot(),/ENOENT/);
  }finally{rmSync(temp,{recursive:true,force:true});}

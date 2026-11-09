@@ -19,6 +19,10 @@ test('v1 JSON remains strict and never accepts v2-only effect types',()=>{
   const withFlame=structuredClone(scene);
   withFlame.effects[0].type='flame';
   assert.throws(()=>validateProject(withFlame),/Bilinmeyen efekt türü/);
+  for(const type of ['metal-glint','water-ripple']){
+    const invalid=structuredClone(scene);invalid.effects[0].type=type;
+    assert.throws(()=>validateProject(invalid),/Bilinmeyen efekt türü/);
+  }
   const fakeV2=structuredClone(scene);
   fakeV2.version=2;
   assert.throws(()=>validateProject(fakeV2),/Nesne sahnesi|bilinmeyen alan/i);

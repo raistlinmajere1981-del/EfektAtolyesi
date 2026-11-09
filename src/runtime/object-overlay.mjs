@@ -117,6 +117,7 @@ export function createObjectOverlay(objectElement, config, options={}) {
     releasePosition();
     throw error;
   }
+  let completed=false;
   let disposed=false,visible=false,pageActive=true,ready=false,unsubscribe=null,everConnected=objectElement.isConnected;
   let elapsed=0,frames=0,cost=0,totalCost=0,slowFrames=0,paused=false,cssVisible=styleVisible(objectElement);
   const removers=[];
@@ -132,10 +133,10 @@ export function createObjectOverlay(objectElement, config, options={}) {
     clear();
   }
   function sync(){
-    const run=!disposed&&!paused&&enabled&&ready&&visible&&pageActive&&!documentRef.hidden&&!media.matches&&cssVisible;
+    const run=!completed&&!disposed&&!paused&&enabled&&ready&&visible&&pageActive&&!documentRef.hidden&&!media.matches&&cssVisible;
     if(!run){
       // Paused frames are repainted without advancing time; all other gates stop work.
-      if(paused&&ready&&visible&&enabled&&!disposed&&!media.matches&&pageActive&&!documentRef.hidden&&cssVisible){
+      if(!completed&&paused&&ready&&visible&&enabled&&!disposed&&!media.matches&&pageActive&&!documentRef.hidden&&cssVisible){
         unsubscribe?.();unsubscribe=null;
         for(const layer of layers)layer.canvas.style.display='block';
         draw(0);
@@ -170,6 +171,7 @@ export function createObjectOverlay(objectElement, config, options={}) {
         layer.instance.render(layer.ctx,{elapsed,width:layer.width,height:layer.height,pixelScale:layer.scale,placement:layer.effect.placement});
       }catch(error){destroy();throw error;}
     }
+    if(layers.every(layer=>layer.instance.isComplete?.()===true)){completed=true;stop();}
     frames++;
     cost=(globalThis.performance?.now?.()??Date.now())-start;
     totalCost+=cost;

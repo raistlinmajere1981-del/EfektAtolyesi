@@ -147,3 +147,59 @@ ve `assets/effects` yolu aktif yayının parçası değildir.
 Hazırlanmış sahne daha sonra düzenlenebilir: Yerel sahneyi güncelle,
 manifest girişlerini çoğaltmadan yalnız yerel sahne dosyasını yeniler.
 Fotoğraf hash değişiminde eski sahne kullanılamaz; canlı deploy yoktur.
+
+### BirDeSenGör V2 — Tur 2: tıklama efektleri
+
+Nesne registry'sindeki `metal-glint` ve `water-ripple` yalnız **v2 objectScene**
+çizicileridir; fotoğraf v1 registry/modeli değişmez. Canvas 2D çizimi kanonik
+`src/runtime/effects/` içinde, seeded ve geçen saniyeye bağlıdır. Metal yansıması
+bıçak maskesindeki dar gradient yoludur; su efekti elipse kırpılan iki ince halkadır.
+Varsayılan süre 1,2 saniye; süre/hız aralığı toplam 0,917–1,5 saniyedir. Efekt
+sonunda kanonik ortak ticker aboneliği kapanır. Reduced-motion, görünmez sekme,
+intersection ve düşük güç bütçeleri mevcut runtime kapılarını kullanır.
+
+Sitenin üç ayrı yuvası: `guardian-sword-left-glint`,
+`guardian-sword-right-glint`, `water-basin-ripple`. Aynı adlı nesnelere ve mevcut
+`metal-glint`/`water-surface` ankrajlarına bağlanır. Fotoğraftaki gerçek yol,
+nesneye göre offset, genişlik/yükseklik, bıçak yönü/eni/ışık bandı ve su yayılımı
+parametreleridir. Eski focus yerleşimi sağ kılıç fotoğraf konumuyla aynı değildir;
+yayınlanan offset bu farkı telafi eder. Kaynak nesneleri/ankrajları taşınmaz.
+
+Sitedeki `usePulseObjectEffects`, canonical compiler + `bindObjectScene` ile
+her kabul edilen tıklamada yeni host açar; 180 ms nesne bazlı cooldown uygular.
+Yeni kabul edilen click önceki hostu yok eder. Süre bitimi, Escape, oda fazından
+çıkış, visibility/pagehide/blur, reduced-motion değişimi ve unmount temizliği
+host/canvas/timer'ları kapatır. Canvas pointer-events:none kalır. Site kendi
+çizicisini yazmaz; kullanılmayan BasinEffects prototipi bağlanmaz. Reduced-motion
+tercihinde canvas açılmadan erişilebilir dokunuş bildirimi verilir.
+
+Admin kaynak hazırlığı yalnız dokuz sabit yuvayı kabul eder; yanlış ID/tür/ankraj,
+eksik yuva, kaynak revizyon farkı ve kopmuş pulse mount hazırlığı reddeder.
+V2 editöründeki mevcut Hafif/Doğal/Belirgin profiller ve slider'lar korunur;
+tıklama efektlerinde **Efekti dene** bir kez çalıştırır, otomatik preview bunları
+başlatmaz. Hançer, kaftan ve sandığa canlı efekt eklenmez.
+
+Doğrulama:
+
+```bash
+bash scripts/check.sh
+# Site kökünde; yerel Chromium ve loopback sunucusu gerektirir:
+node tests/pulse-effects-e2e.mjs
+node tests/ambient-effects-e2e.mjs
+# Admin kökünde; güncel kanonik kaynak paketini doğrudan dener:
+node tests/effect-studio-pulse-preview.test.mjs
+npm run typecheck
+npm run build
+```
+
+Site testi 1920×1080, 1366×768, 390×844 ve reduced-motion; pointer/Enter/Space,
+fokus görünürlüğü, bağımsız kılıçlar, tek tas, cooldown/restart/storm, cancel ve
+aktif canvas piksellerini denetler. Screenshot hedefi sitede
+`artifacts/effect-round2/`, Admin kaynak preview için
+`/tmp/birdesengor-effect-round2-preview/` olur. Bu dosyaların oluşması tek başına
+kabul değildir; test logu ve görsel değerlendirme birlikte okunmalıdır.
+
+Admin'in normal build/sync komutu ortak web-site-template motor hash'ini de
+kontrol eder. Kanonik motor değiştiğinde bu kopya ayrı, yetkili bir senkronizasyon
+ister; Admin paketinin eski motoruyla yeni türleri desteklediği varsayılmaz.
+Bu kapı geçmeden paketlenmiş Admin sürümü hazır sayılmaz.

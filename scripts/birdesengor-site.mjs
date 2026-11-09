@@ -31,6 +31,11 @@ function verifiedMounts(entries){
   'Passive allowlist mounted in room':scene.includes('PASSIVE_EFFECT_IDS.map(objectId => (')
     && /<PassiveObjectEffects\s+key=\{objectId\}\s+objectId=\{objectId\}/.test(scene)
     && scene.includes("from '../effects/PassiveObjectEffects.jsx'"),
+  'Pulse buttons and short-lived canonical mounts are wired':scene.includes("usePulseObjectEffects({enabled:state.phase==='room',reducedMotion})")
+    && scene.includes('data-pulse-object-id={object.id}') && scene.includes('onClick={()=>pulse(object.id)}')
+    && scene.includes('study-pulse-host') && hook.includes('sceneForPulseObjectEffects(scene,id)')
+    && hook.includes('bindObjectScene(compiled,()=>host') && hook.includes('handle.destroy();host.remove()')
+    && hook.includes("from './pulseController.js'"),
   'Candle uses canonical hook':candle.includes('useObjectEffects({') && candle.includes("objectId: 'candle'")
     && candle.includes('enabled,'),
   'Passive uses canonical hook':passive.includes('useObjectEffects({') && passive.includes('effectGroup: objectId'),
@@ -40,9 +45,12 @@ function verifiedMounts(entries){
   'Photo-space effect hosts are positioned and non-interactive':/\.study-effect-host\s*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*none;/.test(css)
     && css.includes('.study-effect-host .object-effect-overlay { pointer-events: none !important; }'),
  };
+ const unreviewedPulses=[...entries].filter(([file,bytes])=>/\.(?:js|jsx)$/.test(file)
+   && /\busePulseObjectEffects\s*\(/.test(bytes.toString('utf8')) && ![ROOT,EFFECT_HOOK].includes(file)).map(([file])=>file);
  const unreviewed=[...entries].filter(([file,bytes])=>/\.(?:js|jsx)$/.test(file)
    && /\buseObjectEffects\s*\(/.test(bytes.toString('utf8')) && !EFFECT_CALL_SITES.has(file)).map(([file])=>file);
  const failures=Object.entries(checks).filter(([,ok])=>!ok).map(([name])=>name);
+ unreviewed.push(...unreviewedPulses);
  if(unreviewed.length)failures.push('unreviewed effect call sites: '+unreviewed.join(', '));
  return {ready:failures.length===0,failures};
 }
@@ -93,6 +101,10 @@ export function siteSceneSource(root=BIRDESENGOR_SITE){
   }
   for(const [objectId,group] of Object.entries(adapter.PASSIVE_OBJECT_EFFECT_GROUPS)){
    adapter.sceneForObjectEffects(scene,objectId);
+   for(const entry of group)result.set(entry.id,{...entry,objectId});
+  }
+  for(const [objectId,group] of Object.entries(adapter.PULSE_OBJECT_EFFECT_GROUPS)){
+   adapter.sceneForPulseObjectEffects(scene,objectId);
    for(const entry of group)result.set(entry.id,{...entry,objectId});
   }
   return result;

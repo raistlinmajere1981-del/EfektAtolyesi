@@ -2,7 +2,7 @@ import {readFile,writeFile,rename,mkdir,stat,chmod} from "node:fs/promises";
 import {existsSync,readFileSync} from "node:fs";
 import {dirname,resolve,join,sep,basename} from "node:path";
 import {fileURLToPath} from "node:url";
-import {randomUUID} from "node:crypto";
+import {randomUUID,createHash} from "node:crypto";
 import {spawn,execFileSync} from "node:child_process";
 import {importProject,exportProject,validateProject,MAX_FILE_BYTES} from "../src/model/project.mjs";
 import {compileScene} from "../src/runtime/index.mjs";
@@ -269,7 +269,10 @@ async function prepare(id) {
   const scene=checkSceneTargetScene(importProject(await readFile(draftPath(id),"utf8")),found.target);
   const result=await siteSource.stage(scene,(await readFile(draftHashPath(id),"utf8")).trim());
   await saveAtomic(draftHashPath(id),result.sourceHash+"\n");
-  return {ok:true,...result,siteUrl:"",message:result.changed?"Yerel site kaynak dosyası hazırlandı. Canlı yayın/deploy yapılmadı.":"Site kaynak dosyası zaten aynı; yazılmadı. Canlı yayın ayrı."};
+  // Bind Admin's preflight to the exact draft that was staged. A later edit
+  // during the network dry-run must not be mistaken for the published version.
+  const draftDigest=createHash("sha256").update(JSON.stringify(scene)).digest("hex");
+  return {ok:true,...result,draftDigest,siteUrl:"",message:result.changed?"Yerel site kaynak dosyası hazırlandı. Canlı yayın/deploy yapılmadı.":"Site kaynak dosyası zaten aynı; yazılmadı. Canlı yayın ayrı."};
  }
  const {project,image}=found;
  if(image.upload&&image.upload.type!=="disabled")throw Error("Bu görselin mevcut yayın bağlantısı zaten var.");

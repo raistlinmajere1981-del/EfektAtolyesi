@@ -15,7 +15,7 @@ const make=(type,seed='fixed',overrides={})=>objectEffectRegistry[type].create({
 function fakeContext(width=120,height=180){
   const calls={fill:0,stroke:0};
   const gradient={addColorStop(){}};
-  const ctx={canvas:{width,height},calls,save(){},restore(){},clearRect(){},setTransform(){},
+  const ctx={canvas:{width,height},calls,save(){},restore(){},rotate(){},clip(){},clearRect(){},setTransform(){},
     beginPath(){},moveTo(){},lineTo(){},bezierCurveTo(){},quadraticCurveTo(){},closePath(){},
     fill(){calls.fill++;},stroke(){calls.stroke++;},arc(){},ellipse(){},fillRect(){calls.fill++;},translate(){},scale(){},
     createRadialGradient(){return gradient;},createLinearGradient(){return gradient;}};
@@ -111,7 +111,7 @@ function overlayContext(canvas,width=120,height=180){
 }
 
 test('object effect registry exposes bounded controls and presets for scene objects only',()=>{
-  assert.deepEqual(Object.keys(objectEffectRegistry).sort(),['flame','glow','smoke']);
+  assert.deepEqual(Object.keys(objectEffectRegistry).sort(),['flame','glow','metal-glint','smoke','water-ripple']);
   for(const [type,entry] of Object.entries(objectEffectRegistry)){
     assert.deepEqual(entry.targetKinds,['sceneObject']);
     assert.ok(['bottom','center'].includes(entry.placement));
@@ -335,4 +335,35 @@ test('bindObjectScene resolves effect objects and reports unresolved object ids'
 
 test('v2 fixture remains independently importable',()=>{
   assert.equal(fixture().effects[1].type,'flame');
+});
+
+test('finite metal/ripple render seeded paths, expire by time and unsubscribe canonical ticker',()=>{
+  for(const type of ['metal-glint','water-ripple']){
+    const a=make(type,'same'),b=make(type,'same'),other=make(type,'other');
+    assert.deepEqual(a.inspect(),b.inspect());assert.notDeepEqual(a.inspect(),other.inspect());
+    a.update(.5);for(let i=0;i<5;i++)b.update(.1);
+    assert.deepEqual(a.inspect(),b.inspect(),'elapsed time determines the frame');
+    const ctx=fakeContext();a.render(ctx,{width:120,height:180});
+    assert.ok(ctx.calls.fill+ctx.calls.stroke>0);a.update(2);a.render(ctx,{width:120,height:180});
+    assert.equal(a.inspect().active,0);assert.equal(a.isComplete(),true);a.destroy();a.destroy();
+    const env=installEnvironment();
+    try{
+      const scene=fixture();scene.effects=[{...scene.effects[0],type,params:defaultObjectParams(type)}];
+      const overlay=createObjectOverlay(env.object,compileObjectScene(scene),{objectId:'candle',ticker:env.ticker});
+      env.intersections[0].trigger(true);assert.equal(env.ticker.activeCount,1);
+      for(let i=0;i<40;i++)env.ticker.tick(.05);
+      assert.equal(env.ticker.activeCount,0);assert.equal(overlay.inspect().effects[0].complete,true);
+      overlay.refresh();assert.equal(env.ticker.activeCount,0,'completed burst never restarts on resize');
+      overlay.destroy();assert.equal(env.object.children.length,0);
+      assert.ok(env.intersections.every(observer=>observer.disconnected));
+    }finally{env.restore();}
+    const reduced=installEnvironment({reducedMotion:true});
+    try{
+      const scene=fixture();scene.effects=[{...scene.effects[0],type,params:defaultObjectParams(type)}];
+      const overlay=createObjectOverlay(reduced.object,compileObjectScene(scene),{objectId:'candle',ticker:reduced.ticker});
+      reduced.intersections[0].trigger(true);
+      assert.equal(reduced.ticker.activeCount,0);assert.equal(overlay.inspect().frames,0);
+      assert.ok(overlay.inspect().fps<=24);overlay.destroy();assert.equal(reduced.object.children.length,0);
+    }finally{reduced.restore();}
+  }
 });

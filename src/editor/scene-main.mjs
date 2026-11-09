@@ -1,4 +1,5 @@
 import {$,el,button,field,download,readFile} from './dom.mjs';
+import {sceneProfiles,profileForEffect,applySceneProfile,basicControls,assertSiteStructure} from './scene-ux.mjs';
 import {History} from './history.mjs';
 import {validateProject,importProject,exportProject,MAX_FILE_BYTES} from '../model/project.mjs';
 import {objectEffectRegistry,defaultObjectParams} from '../registry/effects.mjs';
@@ -7,7 +8,7 @@ import {bindObjectScene} from '../runtime/object-overlay.mjs';
 
 let scene=null,objectId=null,effectId=null,anchorId=null,playing=true;
 let previewHandle=null,previewFrame=null;
-let siteSource=false,showPhoto=true,showEffects=true;
+let siteSource=false,sourceScene=null,showPhoto=true,showEffects=true,objectFilter='all';
 const objectElements=new Map(),markerElements=new Map();
 const history=new History();
 const embedded=new URLSearchParams(location.search).get('embedded')==='1';
@@ -24,6 +25,13 @@ const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const round=value=>Math.round(value*1e4)/1e4;
 const isObjectScene=value=>value?.version===2&&value?.kind==='objectScene';
 
+function validateScene(next){
+  validateProject(next);
+  if(!isObjectScene(next))throw new Error('Bu düzenleyici yalnız version 2 objectScene sahnelerini açar.');
+  if(siteSource&&sourceScene)assertSiteStructure(next,sourceScene);
+  return next;
+}
+
 function uniqueEffectId(type){
   for(let i=0;i<100;i++){
     const id=`${type}-${uid().slice(0,8)}`;
@@ -32,6 +40,7 @@ function uniqueEffectId(type){
   throw new Error('Benzersiz efekt kimliği üretilemedi.');
 }
 function selectObject(id){
+  if(id===objectId){draw();return;}
   objectId=id;
   const target=object();
   anchorId=target?.anchors[0]?.id??null;
@@ -53,8 +62,7 @@ function mutate(action,key=null){
   try{
     const next=structuredClone(scene);
     action(next);
-    validateProject(next);
-    if(!isObjectScene(next))throw new Error('Yalnız v2 objectScene düzenlenebilir.');
+    validateScene(next);
     history.record(scene,key);
     scene=next;
     draw();
@@ -67,101 +75,101 @@ function numberInput(label,value,change,attrs={}){
   const input=el('input',{type:'number',value,onchange:event=>change(event.target.valueAsNumber),...attrs});
   return field(label,input);
 }
-function checkField(label,checked,change){
-  return field(label,el('input',{type:'checkbox',checked,onchange:event=>change(event.target.checked)}));
+function checkField(label,checked,change,attrs={}){
+  return field(label,el('input',{type:'checkbox',checked,onchange:event=>change(event.target.checked),...attrs}));
 }
 
 function renderLists(){
   if(!scene)return;
   $('#object-count').textContent=String(scene.objects.length);
-  const rows=scene.objects.map(item=>{
-    const count=scene.effects.filter(entry=>entry.target.objectId===item.id).length;
+  const rows=scene.objects.filter(item=>objectFilter==='all'||scene.effects.some(entry=>entry.target.objectId===item.id)).map(item=>{
+    const effects=scene.effects.filter(entry=>entry.target.objectId===item.id),enabled=effects.filter(entry=>entry.enabled).length;
+    const state=effects.length?`${effects.length} efekt · ${enabled?`${enabled} açık`:'kapalı'}`:'Efekt yok';
     return el('div',{class:`scene-list-row ${item.id===objectId?'selected':''}`},
-      button(item.name,()=>selectObject(item.id),{class:'scene-row-select'}),
-      el('span',{class:'scene-row-meta',text:`${count} efek`}),
-      el('label',{class:'scene-row-check',title:`${item.name} görünür`},
-        el('input',{type:'checkbox',checked:item.visible,disabled:siteSource,'aria-label':`${item.name} görünür`,onchange:event=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).visible=event.target.checked;})}))
-    );
+      el('button',{type:'button',id:`object-select-${item.id}`,class:'scene-row-select','aria-pressed':String(item.id===objectId),onclick:()=>selectObject(item.id)},
+        el('span',{text:item.name}),el('span',{class:'scene-row-meta',text:`${state}${item.visible?'':' · gizli'}`})));
   });
-  $('#object-list').replaceChildren(...(rows.length?rows:[el('p',{class:'scene-empty',text:'Nesne yok.'})]));
+  $('#object-list').replaceChildren(...(rows.length?rows:[el('p',{class:'scene-empty',text:'Filtreye uygun nesne yok.'})]));
   const effects=effectsForObject();
   $('#effect-count').textContent=String(effects.length);
+  $('#selected-object-name').textContent=object()?.name??'Bir nesne seçin';
   const effectRows=effects.map(item=>el('div',{class:`scene-list-row ${item.id===effectId?'selected':''}`},
-    button(`${objectEffectRegistry[item.type].label} · ${item.target.anchorId}`,()=>selectEffect(item.id),{class:'scene-row-select'}),
+    button(objectEffectRegistry[item.type].label,()=>selectEffect(item.id),{id:`effect-select-${item.id}`,class:'scene-row-select','aria-pressed':String(item.id===effectId)}),
     el('label',{class:'scene-row-check',title:`${objectEffectRegistry[item.type].label} etkin`},
-      el('input',{type:'checkbox',checked:item.enabled,'aria-label':`${objectEffectRegistry[item.type].label} etkin`,onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).enabled=event.target.checked;})}))
+      el('input',{type:'checkbox',id:`effect-list-enabled-${item.id}`,checked:item.enabled,'aria-label':`${objectEffectRegistry[item.type].label} etkin`,onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).enabled=event.target.checked;})}))
   ));
-  $('#effect-list').replaceChildren(...(effectRows.length?effectRows:[el('p',{class:'scene-empty',text:'Bu nesnede efekt yok.'})]));
+  $('#effect-list').replaceChildren(...(effectRows.length?effectRows:[el('p',{class:'scene-empty',text:siteSource?'Bu nesneye bağlı site efekti yok.':'Bu nesnede efekt yok; desteklenen bir tür ekleyin.'})]));
+  $('#add-effect-controls').hidden=siteSource;
   $('#add-effect').disabled=!object()?.anchors.length;
+  $('#source-note').textContent=siteSource?'Nesne yerleşimi ve görünürlüğü site kaynağına aittir. Mevcut efektleri düzenleyebilirsiniz.':'Yerel sahne: görünürlük ve yerleşim İnce ayarlar bölümündedir.';
+  $('#site-effects-note').hidden=!siteSource;
+  document.querySelector('.scene-local-badge').textContent=siteSource?'Site kaynağı':'Yerel';
 }
 function renderObjectInspector(){
   const host=$('#object-inspector');const item=object();
-  host.replaceChildren(el('h2',{text:'Nesne'}));
-  if(!item){host.append(el('p',{class:'scene-empty',text:'Bir nesne seçin.'}));return;}
+  host.replaceChildren(el('h3',{text:'Nesne ve bağlantı'}));
+  if(!item)return;
+  if(siteSource){
+    host.append(el('p',{class:'scene-help',text:'Nesne konumu, görünürlüğü ve bağlantıları site kaynağında sabittir. Hizalamayı efekt kaydırmasıyla yapın.'}));return;
+  }
   host.append(
     field('Nesne adı',el('input',{value:item.name,maxlength:160,onchange:event=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).name=event.target.value;},`object:${item.id}:name`)})),
-    checkField('Görünür',item.visible,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).visible=value;},`object:${item.id}:visible`)),
-    el('h3',{text:'Yerleşim (sahne normali)'}),
-    numberInput('X',item.pose.x,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose.x=value;},`object:${item.id}:pose-x`),{min:0,max:1,step:.001}),
-    numberInput('Y',item.pose.y,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose.y=value;},`object:${item.id}:pose-y`),{min:0,max:1,step:.001}),
-    numberInput('Genişlik',item.pose.width,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose.width=value;},`object:${item.id}:pose-w`),{min:.001,max:1,step:.001}),
-    numberInput('Yükseklik',item.pose.height,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose.height=value;},`object:${item.id}:pose-h`),{min:.001,max:1,step:.001}),
-    numberInput('Dönüş (derece)',item.pose.rotation,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose.rotation=value;},`object:${item.id}:rotation`),{min:-360,max:360,step:1}),
-    numberInput('Derinlik',item.pose.depth,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose.depth=value;},`object:${item.id}:depth`),{min:-100,max:100,step:1})
+    checkField('Görünür',item.visible,value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).visible=value;},`object:${item.id}:visible`))
   );
-  if(!item.anchors.length){host.append(el('p',{class:'scene-empty',text:'Bu nesnede adlandırılmış bağlantı yok.'}));return;}
-  const select=el('select',{'aria-label':'Adlandırılmış bağlantı noktası',onchange:event=>{anchorId=event.target.value;draw();}},
-    ...item.anchors.map(entry=>el('option',{value:entry.id,text:entry.id,selected:entry.id===anchorId})));
-  host.append(el('h3',{text:'Adlandırılmış bağlantı'}),field('Bağlantı noktası',select));
+  for(const [key,label,min,max,step] of [['x','X',0,1,.001],['y','Y',0,1,.001],['width','Genişlik',.001,1,.001],['height','Yükseklik',.001,1,.001],['rotation','Dönüş (derece)',-360,360,1],['depth','Derinlik',-100,100,1]]){
+    host.append(numberInput(label,item.pose[key],value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose[key]=value;},`object:${item.id}:${key}`),{min,max,step}));
+  }
+  if(!item.anchors.length)return;
+  host.append(field('Bağlantı noktası',el('select',{'aria-label':'Adlandırılmış bağlantı noktası',onchange:event=>{anchorId=event.target.value;renderObjectInspector();}},
+    ...item.anchors.map(entry=>el('option',{value:entry.id,text:entry.id,selected:entry.id===anchorId})))));
   const current=anchor();
   if(current){
-    host.append(
-      numberInput('Bağlantı X',current.x,value=>mutate(s=>{const target=s.objects.find(entry=>entry.id===item.id);target.anchors.find(entry=>entry.id===anchorId).x=value;},`anchor:${item.id}:${anchorId}:x`),{min:0,max:1,step:.001}),
-      numberInput('Bağlantı Y',current.y,value=>mutate(s=>{const target=s.objects.find(entry=>entry.id===item.id);target.anchors.find(entry=>entry.id===anchorId).y=value;},`anchor:${item.id}:${anchorId}:y`),{min:0,max:1,step:.001})
-    );
+    for(const key of ['x','y'])host.append(numberInput(`Bağlantı ${key.toUpperCase()}`,current[key],value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).anchors.find(entry=>entry.id===current.id)[key]=value;},`anchor:${item.id}:${current.id}:${key}`),{min:0,max:1,step:.001}));
     const point=anchorScenePoint(item,current.id);
-    const px=Math.round(point.x*scene.viewport.width),py=Math.round(point.y*scene.viewport.height);
-    host.append(el('p',{class:'scene-location'},el('strong',{text:'Görsel konum'}),el('br'),`Sahne: ${point.x.toFixed(4)} × ${point.y.toFixed(4)}`,el('br'),`${px} × ${py} px (${scene.viewport.width} × ${scene.viewport.height})`));
-  }
-  if(siteSource){
-    for(const input of host.querySelectorAll('input[type="number"],input[type="checkbox"]'))input.disabled=true;
-    host.append(el('p',{class:'scene-help',text:'Nesne pozu, görünürlüğü ve bağlantı koordinatları site kaynağına kilitli. Yalnız efekt kaydırması düzenlenir.'}));
+    host.append(el('p',{class:'scene-location',text:`Görsel konum: ${Math.round(point.x*scene.viewport.width)} × ${Math.round(point.y*scene.viewport.height)} px (${scene.viewport.width} × ${scene.viewport.height})`}));
   }
 }
 function renderEffectInspector(){
-  const host=$('#effect-inspector');const item=effect();
-  host.replaceChildren(el('h2',{text:'Efekt'}));
-  if(!item){host.append(el('p',{class:'scene-empty',text:'Bir efekt seçin veya ekleyin.'}));return;}
-  const owner=object();
-  const anchorSelect=el('select',{'aria-label':'Efekt hedef bağlantısı',onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.anchorId=event.target.value;},`effect:${item.id}:anchor`)},
-    ...owner.anchors.map(entry=>el('option',{value:entry.id,text:entry.id,selected:entry.id===item.target.anchorId})));
-  const typeSelect=el('select',{'aria-label':'Efekt türü',onchange:event=>mutate(s=>{const target=s.effects.find(entry=>entry.id===item.id);target.type=event.target.value;target.params=defaultObjectParams(target.type);},`effect:${item.id}:type`)},
-    ...Object.entries(objectEffectRegistry).map(([type,info])=>el('option',{value:type,text:info.label,selected:type===item.type})));
-  host.append(
-    field('Tür',typeSelect),
-    field('Hedef bağlantı',anchorSelect),
-    numberInput('Kaydırma X',item.target.offset.x,value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.offset.x=value;},`effect:${item.id}:offset-x`),{id:'effect-offset-x',min:-5,max:5,step:.01}),
-    numberInput('Kaydırma Y',item.target.offset.y,value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.offset.y=value;},`effect:${item.id}:offset-y`),{id:'effect-offset-y',min:-5,max:5,step:.01}),
-    numberInput('Ölçek',item.target.scale,value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.scale=value;},`effect:${item.id}:scale`),{min:.01,max:10,step:.01}),
-    numberInput('Efekt derinliği',item.target.depth,value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.depth=value;},`effect:${item.id}:depth`),{min:-100,max:100,step:1}),
-    field('Efekt tohumu',el('input',{value:item.seed,maxlength:120,onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).seed=event.target.value;},`effect:${item.id}:seed`)})),
-    checkField('Etkin',item.enabled,value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).enabled=value;},`effect:${item.id}:enabled`)),
-    el('p',{class:'scene-location'},el('strong',{text:'Hedef'}),el('br'),`${owner.name} → ${item.target.anchorId}`,el('br'),`Kaydırma nesne genişliği/yüksekliğine göre normalleştirilir.`)
+  const host=$('#effect-inspector'),advanced=$('#effect-advanced'),item=effect();
+  host.replaceChildren(el('h2',{text:'Efekt'}));advanced.replaceChildren();
+  if(!item){host.append(el('p',{class:'scene-empty',text:siteSource?'Bu nesnenin siteye bağlı efekti bulunmuyor. Bu kaynakta yeni efekt ekleme desteklenmiyor.':'Bir efekt seçin veya ekleyin.'}));return;}
+  const info=objectEffectRegistry[item.type];
+  host.append(el('p',{class:'scene-effect-title',text:info.label}),
+    checkField('Etkin',item.enabled,value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).enabled=value;},`effect:${item.id}:enabled`),{id:'effect-enabled'}),
+    el('p',{class:'scene-help',text:info.description}),
+    el('div',{class:'scene-section-title'},el('h3',{text:'Parametre profili'}),el('span',{id:'effect-profile',class:'scene-profile-state',text:profileForEffect(item)})),
+    el('div',{class:'scene-profiles'},...sceneProfiles.map(profile=>button(profile.label,()=>mutate(s=>applySceneProfile(s.effects.find(entry=>entry.id===item.id),profile.key)),{id:`profile-${profile.key}`,'aria-pressed':String(profileForEffect(item)===profile.label)})))
   );
-  for(const control of objectEffectRegistry[item.type].controls){
-    const input=el('input',{type:'number',value:item.params[control.key],min:control.min,max:control.max,step:control.step,'aria-label':control.label,
-      onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).params[control.key]=event.target.valueAsNumber;},`param:${item.id}:${control.key}`)});
-    host.append(el('div',{class:'scene-param'},el('div',{class:'scene-param-line'},el('label',{text:control.label}),input)));
+  for(const control of basicControls(item.type)){
+    const id=`basic-${control.key}`,value=item.params[control.key];
+    const format=value=>control.key==='duration'?`${Number(value).toFixed(2)} s`:control.key==='speed'?`${Number(value).toFixed(2)} ×`:`${Math.round(Number(value)*100)} %`;
+    const output=el('output',{htmlFor:id,text:format(value)});
+    const input=el('input',{id,type:'range',min:control.min,max:control.max,step:control.step,value,'aria-label':control.label,
+      oninput:event=>{output.textContent=format(event.target.value);},
+      onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).params[control.key]=event.target.valueAsNumber;})});
+    host.append(el('div',{class:'scene-slider'},el('div',{class:'scene-slider-title'},el('label',{htmlFor:id,text:control.label}),output),input));
   }
-  host.append(el('div',{class:'scene-button-row'},
+  if(info.trigger==='pulse')host.append(el('p',{class:'scene-help',text:'Tıklayınca · kısa süreli efekt'}),button('Efekti dene',()=>bindPreview(item.id),{id:'preview-pulse',disabled:!item.enabled}));
+  if(!item.enabled)host.append(el('p',{class:'scene-help',text:'Efekt kapalı. Önizlemede görmek için Etkin seçeneğini açın.'}));
+  if(!siteSource){
+    advanced.append(field('Tür',el('select',{'aria-label':'Efekt türü',onchange:event=>mutate(s=>{const target=s.effects.find(entry=>entry.id===item.id);target.type=event.target.value;target.params=defaultObjectParams(target.type);})},
+      ...Object.entries(objectEffectRegistry).map(([type,entry])=>el('option',{value:type,text:entry.label,selected:type===item.type})))),
+      field('Hedef bağlantı',el('select',{'aria-label':'Efekt hedef bağlantısı',onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.anchorId=event.target.value;})},
+      ...object().anchors.map(entry=>el('option',{value:entry.id,text:entry.id,selected:entry.id===item.target.anchorId})))));
+  }
+  advanced.append(el('p',{class:'scene-help',text:`Hedef: ${object().name} → ${item.target.anchorId}. Kaydırma nesne boyutuna göredir; profiller hizalamayı değiştirmez.`}));
+  for(const [key,label,min,max,step] of [['x','Kaydırma X',-5,5,.01],['y','Kaydırma Y',-5,5,.01]])advanced.append(numberInput(label,item.target.offset[key],value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.offset[key]=value;}),{id:`effect-offset-${key}`,min,max,step}));
+  for(const [key,label,min,max,step] of [['scale','Ölçek',.01,10,.01],['depth','Efekt derinliği',-100,100,1]])advanced.append(numberInput(label,item.target[key],value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target[key]=value;}),{min,max,step}));
+  advanced.append(field('Efekt tohumu',el('input',{value:item.seed,maxlength:120,onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).seed=event.target.value;})})));
+  for(const control of info.controls)advanced.append(numberInput(control.label,item.params[control.key],value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).params[control.key]=value;}),{min:control.min,max:control.max,step:control.step,'aria-label':control.label}));
+  if(!siteSource)advanced.append(el('div',{class:'scene-button-row'},
     button('Kopyala',()=>mutate(s=>{const copy=structuredClone(item);copy.id=uniqueEffectId(copy.type);copy.seed=`${copy.seed}-copy`;s.effects.push(copy);effectId=copy.id;})),
-    button('Sil',()=>mutate(s=>{s.effects=s.effects.filter(entry=>entry.id!==item.id);effectId=null;}),{class:'scene-danger'})
-  ));
+    button('Sil',()=>mutate(s=>{s.effects=s.effects.filter(entry=>entry.id!==item.id);effectId=null;}),{class:'scene-danger'})));
 }
 
 function buildObject(item){
   const node=el('div',{
-    class:`scene-object ${item.id===objectId?'selected':''} ${item.visible?'':'is-hidden'}`,
+    id:`stage-object-${item.id}`,class:`scene-object ${item.id===objectId?'selected':''} ${item.visible?'':'is-hidden'}`,
     'data-scene-object':item.id,'data-scene-object-id':item.id,'data-object-id':item.id,'data-scene-id':scene.sceneId,
     role:'button',tabindex:0,'aria-label':`${item.name} nesnesi`,
     title:`${item.name} · ${item.id}`
@@ -187,11 +195,12 @@ function renderMarkers(){
     const owner=scene.objects.find(entry=>entry.id===item.target.objectId);
     if(!owner)return;
     const point=effectScenePoint(owner,item);
-    const marker=el('button',{type:'button',class:`scene-marker ${item.id===effectId?'is-selected':''} ${item.enabled&&owner.visible?'':'is-off'}`,text:String(index+1),
+    const marker=el('button',{type:'button',id:`marker-${item.id}`,class:`scene-marker ${item.id===effectId?'is-selected':''} ${item.enabled&&owner.visible?'':'is-off'}`,text:String(index+1),
       title:`${objectEffectRegistry[item.type].label} · ${owner.name} → ${item.target.anchorId}`,'aria-label':`${objectEffectRegistry[item.type].label} hedefini sürükle`});
     marker.dataset.effectId=item.id;
     Object.assign(marker.style,{left:`${point.x*100}%`,top:`${point.y*100}%`});
     marker.addEventListener('pointerdown',event=>beginDrag(event,item));
+    marker.addEventListener('click',()=>selectEffect(item.id));
     marker.addEventListener('keydown',event=>{
       if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'&&event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;
       event.preventDefault();
@@ -206,11 +215,12 @@ function renderStageSelection(){
   for(const [id,node] of objectElements)node.classList.toggle('selected',id===objectId);
   for(const [id,node] of markerElements)node.classList.toggle('is-selected',id===effectId);
 }
-function bindPreview(){
+function bindPreview(pulseId=null){
   previewHandle?.destroy();previewHandle=null;
   if(!scene)return;
   try{
-    previewHandle=bindObjectScene(scene,id=>objectElements.get(id),{expectedSceneId:scene.sceneId});
+    const selected={...scene,effects:scene.effects.filter(item=>objectEffectRegistry[item.type].trigger!=='pulse'||item.id===pulseId)};
+    previewHandle=bindObjectScene(selected,id=>objectElements.get(id),{expectedSceneId:scene.sceneId});
     if(!playing)previewHandle.setPaused(true);
     previewHandle.setEnabled(showEffects);
   }catch(e){previewHandle=null;error(e);}
@@ -227,6 +237,8 @@ function renderStage(){
 }
 function draw(){
   if(!scene)return;
+  const focusId=document.activeElement?.id;
+  const scrolls=[...document.querySelectorAll('.scene-panel')].map(node=>[node,node.scrollTop]);
   if(!object())objectId=scene.objects[0]?.id??null;
   const owner=object();
   if(!owner)objectId=scene.objects[0]?.id??null;
@@ -243,6 +255,8 @@ function draw(){
   renderEffectInspector();
   renderStage();
   updateHistoryButtons();
+  if(focusId)document.getElementById(focusId)?.focus({preventScroll:true});
+  for(const [node,top] of scrolls)node.scrollTop=top;
 }
 function updateHistoryButtons(){
   $('#undo').disabled=!history.past.length;
@@ -272,7 +286,7 @@ function moveDrag(event){
   const next=structuredClone(scene);
   const target=next.effects.find(entry=>entry.id===drag.id);
   target.target.offset={x,y};
-  try{validateProject(next);}catch(e){error(e);return;}
+  try{validateScene(next);}catch(e){error(e);return;}
   scene=next;drag.changed=true;
   const owner=next.objects.find(entry=>entry.target?.id===drag.id)??next.objects.find(entry=>entry.id===target.target.objectId);
   const point=effectScenePoint(owner,target);
@@ -292,8 +306,7 @@ function endDrag(event){
   draw();
 }
 function install(next,message,{resetHistory=false}={}){
-  validateProject(next);
-  if(!isObjectScene(next))throw new Error('Bu düzenleyici yalnız version 2 objectScene sahnelerini açar.');
+  validateScene(next);
   if(scene)history.record(scene);
   scene=next;
   if(resetHistory){history.past.length=0;history.future.length=0;}
@@ -304,15 +317,17 @@ function install(next,message,{resetHistory=false}={}){
   status(message);
 }
 function installPreview(packet){
-  siteSource=packet.siteSource===true;
   const preview=packet.previewImage;
   if(preview!==undefined&&(typeof preview!=='string'||!/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(preview)))throw new Error('Site önizleme görseli geçersiz.');
+  siteSource=packet.siteSource===true;
+  sourceScene=siteSource?structuredClone(packet.scene):null;
+  $('#advanced-settings').open=false;
   const photo=$('#scene-photo');
   if(preview)photo.src=preview;else photo.removeAttribute('src');
   photo.hidden=!preview||!showPhoto;
   $('#scene-viewport').classList.toggle('has-photo',Boolean(preview)&&showPhoto);
   $('#show-photo').disabled=!preview;
-  $('#coordinate-help').textContent=siteSource?'Güncel oda fotoğrafı · 1600 × 900 kaynak düzlemi (object-fit: fill). Fiziksel kitap/kamera/vefk katmanları, yakınlaşma ve mobil pozlar bu önizlemeye dahil değil. Efektler yerel denemedir; site bağlantısı hazırlıkta denetlenir.':'Yerel sahne önizlemesi. Turuncu hedefi sürükleyerek yalnız efekt kaydırmasını değiştirin.';
+  $('#coordinate-help').textContent=siteSource?'Güncel oda fotoğrafı. Nesneyi seçin; turuncu hedefi sürükleyerek efekti hizalayın. Kitap/kamera/vefk yakınlaşması bu önizlemeye dahil değildir.':'Yerel sahne önizlemesi. Turuncu hedefi sürükleyerek yalnız efekt kaydırmasını değiştirin.';
 }
 function loadText(text,message,options){
   const next=importProject(text);
@@ -322,7 +337,7 @@ function loadText(text,message,options){
 function travel(direction){
   if(!scene)return;
   const next=history[direction](scene);
-  scene=next;
+  scene=validateScene(next);
   draw();
   status(direction==='undo'?'Geri alındı.':'Yinelendi.');
   changed();
@@ -333,7 +348,7 @@ for(const [type,info]of Object.entries(objectEffectRegistry)){
 }
 $('#add-effect').onclick=()=>{
   const owner=object(),point=anchor();
-  if(!owner||!point)return;
+  if(siteSource||!owner||!point)return;
   const type=$('#add-effect-type').value;
   mutate(s=>{
     const id=uniqueEffectId(type);
@@ -341,6 +356,20 @@ $('#add-effect').onclick=()=>{
     effectId=id;
   });
 };
+$('#object-filter').onchange=event=>{objectFilter=event.target.value;renderLists();};
+const panelTabs=[...document.querySelectorAll('[data-mobile-panel]')];
+for(const tab of panelTabs){
+  tab.onclick=()=>{
+    document.body.dataset.panel=tab.dataset.mobilePanel;
+    for(const item of panelTabs){item.setAttribute('aria-selected',String(item===tab));item.tabIndex=item===tab?0:-1;}
+  };
+  tab.onkeydown=event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();
+    const next=panelTabs[event.key==='Home'?0:event.key==='End'?panelTabs.length-1:(panelTabs.indexOf(tab)+1)%panelTabs.length];
+    next.click();next.focus();
+  };
+}
 $('#scene-name').onchange=event=>mutate(s=>{s.name=event.target.value;});
 $('#scene-seed').onchange=event=>mutate(s=>{s.seed=event.target.value;});
 $('#undo').onclick=()=>travel('undo');
@@ -374,7 +403,7 @@ new ResizeObserver(([entry])=>{
 $('#export').onclick=()=>{
   try{
     if(!scene)throw new Error('Önce sahne yükleyin.');
-    const text=exportProject(scene);
+    const text=exportProject(validateScene(scene));
     if(new TextEncoder().encode(text).length>MAX_FILE_BYTES)throw new Error('Dışa aktarım 25 MB sınırını aşıyor.');
     download(text,'birdesengor-study-v2.scene.json');
     status('V2 JSON indirildi.');
@@ -415,13 +444,15 @@ if(embedded){
     if(event.data.type==='studio:hello'){notify('studio:ready');return;}
     if(event.data.type==='studio:load'){
       try{
+        const next=importProject(JSON.stringify(event.data.scene));
+        if(!isObjectScene(next))throw new Error('Bu düzenleyici yalnız version 2 objectScene sahnelerini açar.');
         installPreview(event.data);
         loadText(JSON.stringify(event.data.scene),'Sahne hazır.',{resetHistory:true});
         notify('studio:loaded',{requestId:event.data.requestId});
       }catch(e){error(e);notify('studio:error',{message:e.message||String(e),requestId:event.data.requestId});}
     }
     if(event.data.type==='studio:get'){
-      try{notify('studio:data',{requestId:event.data.requestId,scene:structuredClone(scene)});}
+      try{validateScene(scene);notify('studio:data',{requestId:event.data.requestId,scene:structuredClone(scene)});}
       catch(e){notify('studio:error',{requestId:event.data.requestId,message:e.message||String(e)});}
     }
   });
