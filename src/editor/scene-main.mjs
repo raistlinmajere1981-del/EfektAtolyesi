@@ -17,6 +17,10 @@ const notify=(type,extra={})=>{if(embedded)window.parent.postMessage({type,...ex
 const changed=()=>notify('studio:dirty');
 const status=(message,isError=false)=>{const node=$('#status');node.textContent=message;node.classList.toggle('error',isError);};
 const error=e=>{const message=e?.message||String(e);status(message,true);};
+// The drawing pen still has an internal publication binding, but is not a
+// separate physical room object. Keep its canonical anchor out of the editor UI.
+const isInternalWorkshopPart=item=>siteSource&&scene?.sceneId==='birdesengor-study-v2'&&item.id==='quill'&&!scene.effects.some(effect=>effect.target.objectId===item.id);
+const visibleObjects=()=>scene?.objects.filter(item=>!isInternalWorkshopPart(item))??[];
 const object=()=>scene?.objects.find(item=>item.id===objectId);
 const effect=()=>scene?.effects.find(item=>item.id===effectId);
 const anchor=()=>object()?.anchors.find(item=>item.id===anchorId);
@@ -82,8 +86,8 @@ function checkField(label,checked,change,attrs={}){
 
 function renderLists(){
   if(!scene)return;
-  $('#object-count').textContent=String(scene.objects.length);
-  const rows=scene.objects.filter(item=>objectFilter==='all'||scene.effects.some(entry=>entry.target.objectId===item.id)).map(item=>{
+  $('#object-count').textContent=String(visibleObjects().length);
+  const rows=visibleObjects().filter(item=>objectFilter==='all'||scene.effects.some(entry=>entry.target.objectId===item.id)).map(item=>{
     const effects=scene.effects.filter(entry=>entry.target.objectId===item.id),enabled=effects.filter(entry=>entry.enabled).length;
     const state=effects.length?`${effects.length} efekt · ${enabled?`${enabled} açık`:'kapalı'}`:'Efekt yok';
     return el('div',{class:`scene-list-row ${item.id===objectId?'selected':''}`},
@@ -245,7 +249,7 @@ function renderStage(){
   previewHandle?.destroy();previewHandle=null;
   const host=$('#scene-objects');host.replaceChildren();objectElements.clear();
   if(!scene)return;
-  for(const item of scene.objects){
+  for(const item of visibleObjects()){
     const node=buildObject(item);objectElements.set(item.id,node);host.append(node);
   }
   bindPreview();
