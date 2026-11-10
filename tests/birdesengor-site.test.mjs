@@ -27,10 +27,10 @@ test('installed target opens exact CURRENT site objects/anchors/photo and safely
   assert.deepEqual(opened.scene,canonical);
   assert.ok(opened.scene.objects.some(object=>object.id==='vefk-stand'));
   assert.ok(!opened.scene.objects.some(object=>object.id==='parchment'));
-  assert.equal(opened.scene.objects.length,14);
+  assert.equal(opened.scene.objects.length,15);
   assert.equal(opened.siteSource,true);
   assert.equal(opened.scene.previewImage,undefined);
-  assert.equal(opened.previewImage,'data:image/webp;base64,'+readFileSync(join(BIRDESENGOR_SITE,'public/scene-assets/approved/room-workshop-free-2to1.webp')).toString('base64'));
+  assert.equal(opened.previewImage,'data:image/webp;base64,'+readFileSync(join(BIRDESENGOR_SITE,'public/scene-assets/approved/room-natural-sash-2to1.webp')).toString('base64'));
   const file=join(temp,'birdesengor__scene_v2.scene.json');
   const stale=readFileSync(join(studio,'examples/birdesengor-v2.scene.json'),'utf8');
   writeFileSync(file,stale);
@@ -41,7 +41,7 @@ test('installed target opens exact CURRENT site objects/anchors/photo and safely
   const edit=structuredClone(canonical);edit.effects[0].params.opacity=.71;
   await assert.rejects(invoke('save',{id,scene:edit},temp),/kaynağı değişmiş/);
   const result=await invoke('save',{id,scene:edit,sourceHash:opened.sourceHash},temp);
-  assert.equal(result.readiness.ready,true);assert.equal(result.readiness.mountedCount,8);
+  assert.equal(result.readiness.ready,true);assert.equal(result.readiness.mountedCount,9);
   assert.equal(result.readiness.enabledCount,edit.effects.filter(effect=>effect.enabled).length);
   assert.deepEqual((await invoke('load',{id},temp)).scene,edit);
   // Never call installed-target prepare from this test: it can write the real
@@ -63,9 +63,9 @@ test('isolated site staging validates slots, pose, current source hash and write
   const source=siteSceneSource(temp),state=await source.snapshot();
   const scene=structuredClone(state.scene);
   scene.name+=' · isolated staging test';
-  // All eight allowlisted effect slots now mount through the canonical runtime.
+  // All nine allowlisted effect slots now mount through the canonical runtime.
   // The staged file is isolated: no test ever writes the real site source.
-  assert.equal(source.readiness(scene,state).mountedCount,8);
+  assert.equal(source.readiness(scene,state).mountedCount,9);
   assert.equal(source.readiness(scene,state).ready,true);
   const extra=structuredClone(scene);extra.effects.push({...structuredClone(scene.effects[0]),id:'manually-added'});
   await assert.rejects(source.stage(extra,state.sourceHash),/Desteklenmeyen site efekt yuvası/);
@@ -125,4 +125,17 @@ test('isolated site staging validates slots, pose, current source hash and write
   rmSync(join(temp,'src/effects/effectsAdapter.js'));
   await assert.rejects(source.snapshot(),/ENOENT/);
  }finally{rmSync(temp,{recursive:true,force:true});}
+});
+
+
+test('motion artwork identity is part of the verified mounted site contract',async()=>{
+ const actual=await siteSceneSource().snapshot();
+ const root=mkdtempSync(join(tmpdir(),'effect-site-motion-'));
+ try{
+  for(const [file,bytes] of actual.entries){mkdirSync(dirname(join(root,file)),{recursive:true});writeFileSync(join(root,file),bytes);}
+  const file=join(root,'src/scene/SceneRoot.jsx');writeFileSync(file,readFileSync(file,'utf8').replace('data-effect-layer={layer.id}','data-effect-layer="wrong-layer"'));
+  const source=siteSceneSource(root),state=await source.snapshot();
+  assert.equal(source.readiness(state.scene,state).ready,false);
+  assert.ok(source.readiness(state.scene,state).problems.some(message=>message.includes('Motion slot')));
+ }finally{rmSync(root,{recursive:true,force:true});}
 });

@@ -5,6 +5,7 @@ import {createFlame} from '../runtime/effects/flame.mjs';
 import {createGlow} from '../runtime/effects/glow.mjs';
 import {createMetalGlint} from '../runtime/effects/metal-glint.mjs';
 import {createWaterRipple} from '../runtime/effects/water-ripple.mjs';
+import {createPendulumSway} from '../runtime/effects/pendulum-sway.mjs';
 import {createSmoke} from '../runtime/effects/smoke.mjs';
 import {polygonBounds} from '../model/geometry.mjs';
 
@@ -63,6 +64,13 @@ const objectCommon = [
   number('speed','Hız',1,.05,3,.05),
 ];
 export const objectEffectRegistry = Object.freeze({
+  'pendulum-sway': {
+    label:'Sarkaç Salınımı', description:'Sabit askıdan başlayan, giderek sönen açısal hareket.',
+    create:createPendulumSway, targetKinds:['sceneObject'], placement:'center', trigger:'pulse', output:'motion',
+    controls:[number('amplitude','Açı (derece)',3,.1,15,.1),number('frequency','Frekans (Hz)',2,.2,5,.1),number('damping','Sönümleme (s⁻¹)',2.7,.5,8,.1),number('duration','Süre (s)',1.8,.5,5,.1),number('speed','Hız',1,.25,3,.05)],
+    presets:{Sakin:{amplitude:1.5,frequency:1.6,damping:3.2,duration:1.5,speed:1},Doğal:{amplitude:3,frequency:2,damping:2.7,duration:1.8,speed:1},Canlı:{amplitude:5,frequency:2.2,damping:2.2,duration:2.4,speed:1}},
+    compile(object,target,params){return {...params,amplitude:params.amplitude*target.scale};},
+  },
   'metal-glint': {
     label:'Metal ağzı yansıması', description:'Bıçak maskesinde tek, dar ve sıcak ışık geçişi.', create:createMetalGlint,
     targetKinds:['sceneObject'], placement:'center', trigger:'pulse',

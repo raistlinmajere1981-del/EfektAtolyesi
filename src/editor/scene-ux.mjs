@@ -16,7 +16,7 @@ export function applySceneProfile(effect,key) {
   effect.params={...effect.params,...preset};
 }
 export function basicControls(type) {
-  const keys={flame:['opacity','speed','sway'],glow:['opacity','speed','pulse','width'],smoke:['opacity','speed','spread'],'metal-glint':['opacity','speed','band','duration'],'water-ripple':['opacity','speed','spread','duration']}[type];
+  const keys={'pendulum-sway':['amplitude','frequency','damping','duration','speed'],flame:['opacity','speed','sway'],glow:['opacity','speed','pulse','width'],smoke:['opacity','speed','spread'],'metal-glint':['opacity','speed','band','duration'],'water-ripple':['opacity','speed','spread','duration']}[type];
   return keys.map(key=>{
     const control=objectEffectRegistry[type].controls.find(item=>item.key===key);
     return {...control,label:key==='opacity'?'Şiddet':key==='width'?'Yayılım (genişlik)':control.label};
@@ -25,8 +25,8 @@ export function basicControls(type) {
 // The editor cannot create new publishable slots or move the source photograph.
 // The authoritative mounted-site validation remains in birdesengor-site.mjs.
 export function assertSiteStructure(next,source) {
-  const objects=scene=>scene.objects.map(({id,pose,visible,anchors})=>({id,pose,visible,anchors}));
-  const slots=scene=>scene.effects.map(({id,type,target})=>({id,type,objectId:target.objectId,anchorId:target.anchorId})).sort((a,b)=>a.id.localeCompare(b.id));
+  const objects=scene=>scene.objects.map(({id,pose,visible,anchors,motionLayers})=>({id,pose,visible,anchors,motionLayers}));
+  const slots=scene=>scene.effects.map(({id,type,target})=>({id,type,objectId:target.objectId,anchorId:target.anchorId,layerId:target.layerId})).sort((a,b)=>a.id.localeCompare(b.id));
   if(next.sceneId!==source.sceneId||JSON.stringify(next.viewport)!==JSON.stringify(source.viewport)
     ||JSON.stringify(objects(next))!==JSON.stringify(objects(source)))
     throw new Error('Nesne yerleşimi, görünürlüğü ve bağlantıları site kaynağına aittir.');

@@ -120,7 +120,7 @@ async function loadSceneTarget(target,id){
     message="Eski taslak güncel site kaynağıyla uyuşmuyor; güncel kaynak açıldı. Eski dosya korunuyor; Kaydet bu hedefin taslağını yeniler.";
    }
   }
-  return {scene,source,message,sourceHash:state.sourceHash,previewImage:await siteSource.preview(state),siteSource:true,
+  return {scene,source,message,sourceHash:state.sourceHash,previewImage:await siteSource.preview(state),previewObjects:siteSource.previewObjects(state),siteSource:true,
    readiness:siteSource.readiness(scene,state)};
  }
  const draft=draftPath(id),source=within(studioRoot,target.sourcePath);

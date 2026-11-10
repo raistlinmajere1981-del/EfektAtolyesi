@@ -9,7 +9,7 @@ export const BIRDESENGOR_SITE='/home/raistlin/ChannelFoundry/channels/birdesengo
 export const SITE_SCENE='src/effects/birdesengor-effects.v2.json';
 const MANIFEST='src/scene/data/study.scene.json';
 const ADAPTER='src/effects/effectsAdapter.js';
-const PREVIEW='public/scene-assets/approved/room-workshop-free-2to1.webp';
+const PREVIEW='public/scene-assets/approved/room-natural-sash-2to1.webp';
 const ROOT='src/scene/SceneRoot.jsx';
 const STAGE_CSS='src/scene/study-foundation.css';
 const CANDLE_HOST='src/effects/CandleEffects.jsx';
@@ -34,8 +34,11 @@ function verifiedMounts(entries){
   'Pulse buttons and short-lived canonical mounts are wired':scene.includes("usePulseObjectEffects({enabled:state.phase==='room',reducedMotion})")
     && scene.includes('data-pulse-object-id={object.id}') && scene.includes('onClick={()=>pulse(object.id)}')
     && scene.includes('study-pulse-host') && hook.includes('sceneForPulseObjectEffects(scene,id)')
-    && hook.includes('bindObjectScene(compiled,()=>host') && hook.includes('handle.destroy();host.remove()')
+    && hook.includes('bindObjectScene(compiled,()=>motion?element:host') && hook.includes('handle.destroy();host.remove()')
     && hook.includes("from './pulseController.js'"),
+  'Motion slot mounts the declared visual layer':scene.includes('object.visual.layers.map')
+    && scene.includes('data-effect-layer={layer.id}') && scene.includes('study-metal-fixed')
+    && hook.includes('bindObjectScene(compiled,()=>motion?element:host'),
   'Candle uses canonical hook':candle.includes('useObjectEffects({') && candle.includes("objectId: 'candle'")
     && candle.includes('enabled,'),
   'Passive uses canonical hook':passive.includes('useObjectEffects({') && passive.includes('effectGroup: objectId'),
@@ -82,6 +85,13 @@ export function siteSceneSource(root=BIRDESENGOR_SITE){
    }
   }
   visit(ROOT);
+  const sourceManifest=JSON.parse(entries.get(MANIFEST));
+  for(const object of (sourceManifest.objects??[]).filter(o=>o.motionLayers?.length)){
+    for(const asset of [object.visual.asset,...object.visual.layers.map(layer=>layer.asset)]){
+      if(!/^\/scene-assets\/[a-z0-9/-]+\.webp$/.test(asset))throw Error('Geçersiz hareket görsel yolu.');
+      const file='public'+asset;entries.set(file,read(file));
+    }
+  }
   const mounted=verifiedMounts(entries);
   const adapter=await import('data:text/javascript;base64,'+entries.get(ADAPTER).toString('base64'));
   const manifest=JSON.parse(entries.get(MANIFEST).toString('utf8'));
@@ -130,6 +140,14 @@ export function siteSceneSource(root=BIRDESENGOR_SITE){
   if(state.mounted.ready && enabledCount>mountedCount)problems.push('Etkin efekt sayısı doğrulanmış site yuvalarını aşıyor.');
   return {ready:problems.length===0,effectCount:scene.effects.length,enabledCount,mountedCount,problems};
  }
+ function previewObjects(state){
+  const image=asset=>{
+    const bytes=state.entries.get('public'+asset);
+    if(!bytes||bytes.length>8*1024*1024||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WEBP')throw Error('Geçersiz nesne önizlemesi.');
+    return 'data:image/webp;base64,'+bytes.toString('base64');
+  };
+  return state.manifest.objects.filter(o=>o.motionLayers?.length).map(o=>({objectId:o.id,image:image(o.visual.asset),layers:o.visual.layers.map(layer=>({id:layer.id,image:image(layer.asset),box:layer.box}))}));
+ }
  async function preview(state){
   const bytes=state.entries.get(PREVIEW);
   if(bytes.length>16*1024*1024||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WEBP')throw Error('Site oda önizlemesi geçerli bir WebP olmalı.');
@@ -165,5 +183,5 @@ export function siteSceneSource(root=BIRDESENGOR_SITE){
   const nextEntries=[...state.entries].map(([file,bytes])=>[file,file===SITE_SCENE&&changed?Buffer.from(contents):bytes]);
   return {changed,sourceHash:digest(nextEntries.map(([file,bytes])=>[file,bytes.toString('base64')])),readiness:report};
  }
- return {snapshot,validate,readiness,preview,stage};
+ return {snapshot,validate,readiness,preview,previewObjects,stage};
 }

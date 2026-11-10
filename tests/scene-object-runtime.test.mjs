@@ -111,7 +111,7 @@ function overlayContext(canvas,width=120,height=180){
 }
 
 test('object effect registry exposes bounded controls and presets for scene objects only',()=>{
-  assert.deepEqual(Object.keys(objectEffectRegistry).sort(),['flame','glow','metal-glint','smoke','water-ripple']);
+  assert.deepEqual(Object.keys(objectEffectRegistry).sort(),['flame','glow','metal-glint','pendulum-sway','smoke','water-ripple']);
   for(const [type,entry] of Object.entries(objectEffectRegistry)){
     assert.deepEqual(entry.targetKinds,['sceneObject']);
     assert.ok(['bottom','center'].includes(entry.placement));
@@ -365,5 +365,71 @@ test('finite metal/ripple render seeded paths, expire by time and unsubscribe ca
       assert.equal(reduced.ticker.activeCount,0);assert.equal(overlay.inspect().frames,0);
       assert.ok(overlay.inspect().fps<=24);overlay.destroy();assert.equal(reduced.object.children.length,0);
     }finally{reduced.restore();}
+  }
+});
+
+function motionFixture(){
+  const scene=fixture(),object=scene.objects.find(o=>o.id==='candle');
+  object.motionLayers=['pendant'];
+  const effect={...scene.effects.find(e=>e.target.objectId==='candle'),id:'motion',type:'pendulum-sway',params:defaultObjectParams('pendulum-sway')};
+  effect.target={...effect.target,layerId:'pendant',offset:{x:0,y:0},scale:1};scene.effects=[effect];return scene;
+}
+test('pendulum follows damped angular motion, both directions, exact rest and speed scaling',()=>{
+  const a=make('pendulum-sway'),b=make('pendulum-sway','fixed',{speed:2});
+  a.update(.125);b.update(.0625);
+  assert.equal(a.inspect().angle,b.inspect().angle);
+  assert.ok(a.inspect().angle>0&&a.inspect().angle<3);
+  a.update(.25);assert.ok(a.inspect().angle<0);
+  a.update(1.415);const near=a.inspect().angle;
+  assert.ok(Math.abs(near)<.001,'terminal envelope settles with no final snap');
+  a.update(.02);assert.equal(a.inspect().angle,0);assert.equal(a.isComplete(),true);
+  a.destroy();a.update(10);assert.equal(a.motion().angle,0);
+});
+test('motion layers use canonical ticker without canvas and restore styles on all lifecycle gates',()=>{
+  for(const gate of ['completion','disable','hidden','reduced','pagehide','destroy','detached','unmount']){
+    const env=installEnvironment();
+    try{
+      const child=fakeElement('pendant');child.dataset={effectLayer:'pendant'};child.style={rotate:'0deg',transformOrigin:'50% 10%'};env.object.appendChild(child);
+      const fixed=fakeElement('fixed');env.object.appendChild(fixed);
+      const compiled=compileObjectScene(motionFixture());
+      const overlay=createObjectOverlay(env.object,compiled,{ticker:env.ticker,objectId:'candle'});
+      assert.equal(overlay.canvases.length,0);assert.equal(child.style.transformOrigin,'50% 20.5%');
+      env.intersections[0].trigger(true);env.ticker.tick(.125);
+      assert.notEqual(child.style.rotate,'0deg');assert.equal(fixed.style.rotate,undefined);assert.equal(env.ticker.activeCount,1);
+      if(gate==='completion')env.ticker.tick(2);
+      if(gate==='disable')overlay.setEnabled(false);
+      if(gate==='hidden'){env.document.hidden=true;env.document.dispatch('visibilitychange');}
+      if(gate==='reduced')env.setReducedMotion(true);
+      if(gate==='pagehide')env.window.dispatch('pagehide');
+      if(gate==='destroy')overlay.destroy();
+      if(gate==='detached'){child.isConnected=false;env.ticker.tick(.1);}
+      if(gate==='unmount'){env.object.isConnected=false;env.ticker.tick(.1);}
+      assert.equal(child.style.rotate,'0deg',gate);assert.equal(env.ticker.activeCount,0,gate);
+      overlay.destroy();overlay.destroy();assert.equal(child.style.transformOrigin,'50% 10%');
+      assert.equal(env.object.children.length,2,'consumer-owned image stays mounted');
+    }finally{env.restore();}
+  }
+});
+test('motion binding rejects missing, duplicate and already claimed layers with rollback',()=>{
+  const env=installEnvironment();
+  try{
+    const compiled=compileObjectScene(motionFixture());
+    assert.throws(()=>createObjectOverlay(env.object,compiled,{objectId:'candle'}),/layer/);
+    const child=fakeElement();child.dataset={effectLayer:'pendant'};env.object.appendChild(child);
+    const overlay=createObjectOverlay(env.object,compiled,{objectId:'candle',ticker:env.ticker});
+    assert.throws(()=>createObjectOverlay(env.object,compiled,{objectId:'candle'}),/already bound/);
+    overlay.destroy();
+    const duplicate=fakeElement();duplicate.dataset={effectLayer:'pendant'};env.object.appendChild(duplicate);
+    assert.throws(()=>createObjectOverlay(env.object,compiled,{objectId:'candle'}),/ambiguous/);
+  }finally{env.restore();}
+});
+test('motion JSON validates layer identity, duplicates, finite parameters and persisted profiles',()=>{
+  const scene=motionFixture();assert.deepEqual(importProject(JSON.stringify(scene)),scene);
+  const invalid=[s=>{delete s.effects[0].target.layerId;},s=>s.effects[0].target.layerId='fixed',s=>s.objects.find(o=>o.id==='candle').motionLayers.push('pendant'),s=>s.effects.push({...structuredClone(s.effects[0]),id:'another-motion'})];
+  for(const change of invalid){const copy=structuredClone(scene);change(copy);assert.throws(()=>importProject(JSON.stringify(copy)));}
+  for(const control of objectEffectRegistry['pendulum-sway'].controls){
+    for(const value of [control.min-.1,control.max+.1,NaN,Infinity]){
+      const copy=structuredClone(scene);copy.effects[0].params[control.key]=value;assert.throws(()=>compileObjectScene(copy),control.key);
+    }
   }
 });

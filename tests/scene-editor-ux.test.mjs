@@ -10,6 +10,7 @@ test('all daily profiles use exact canonical presets, are deterministic and pres
   for(const type of Object.keys(objectEffectRegistry))for(const profile of sceneProfiles){
     const scene=fixture(),effect=scene.effects[0];
     effect.type=type;effect.params={...defaultObjectParams(type),...objectEffectRegistry[type].presets.Doğal};
+    if(type==='pendulum-sway'){scene.objects.find(o=>o.id===effect.target.objectId).motionLayers=['pendant'];effect.target.layerId='pendant';}
     const before=structuredClone(effect);
     applySceneProfile(effect,profile.key);
     assert.deepEqual(effect.params,{...before.params,...objectEffectRegistry[type].presets[profile.key]});
@@ -19,14 +20,14 @@ test('all daily profiles use exact canonical presets, are deterministic and pres
     const first=exportProject(scene);applySceneProfile(effect,profile.key);
     assert.equal(exportProject(scene),first,'reapplying never compounds parameter values');
     assert.deepEqual(importProject(first),scene);
-    effect.params.opacity-=.013;
+    effect.params[type==='pendulum-sway'?'amplitude':'opacity']-=.013;
     assert.equal(profileForEffect(effect),'Özel');
   }
 });
 test('daily controls reference only real type-specific canonical parameters and ranges',()=>{
   for(const type of Object.keys(objectEffectRegistry)){
     const controls=basicControls(type),canonical=objectEffectRegistry[type].controls;
-    assert.ok(controls.some(control=>control.label==='Şiddet'));
+    assert.ok(controls.some(control=>control.key===(type==='pendulum-sway'?'amplitude':'opacity')));
     for(const control of controls){
       const expected=canonical.find(item=>item.key===control.key);
       assert.ok(expected);assert.equal(control.min,expected.min);assert.equal(control.max,expected.max);assert.equal(control.step,expected.step);

@@ -8,6 +8,7 @@ import {bindObjectScene} from '../runtime/object-overlay.mjs';
 
 let scene=null,objectId=null,effectId=null,anchorId=null,playing=true;
 let previewHandle=null,previewFrame=null;
+let previewObjects=new Map();
 let siteSource=false,sourceScene=null,showPhoto=true,showEffects=true,objectFilter='all';
 const objectElements=new Map(),markerElements=new Map();
 const history=new History();
@@ -119,6 +120,7 @@ function renderObjectInspector(){
   for(const [key,label,min,max,step] of [['x','X',0,1,.001],['y','Y',0,1,.001],['width','Genişlik',.001,1,.001],['height','Yükseklik',.001,1,.001],['rotation','Dönüş (derece)',-360,360,1],['depth','Derinlik',-100,100,1]]){
     host.append(numberInput(label,item.pose[key],value=>mutate(s=>{s.objects.find(entry=>entry.id===item.id).pose[key]=value;},`object:${item.id}:${key}`),{min,max,step}));
   }
+  if(!siteSource)host.append(field('Hareketli katman kimlikleri',el('input',{value:(item.motionLayers??[]).join(','),'aria-label':'Hareketli katman kimlikleri',onchange:event=>mutate(s=>{s.objects.find(o=>o.id===item.id).motionLayers=event.target.value.split(',').map(v=>v.trim()).filter(Boolean);})})));
   if(!item.anchors.length)return;
   host.append(field('Bağlantı noktası',el('select',{'aria-label':'Adlandırılmış bağlantı noktası',onchange:event=>{anchorId=event.target.value;renderObjectInspector();}},
     ...item.anchors.map(entry=>el('option',{value:entry.id,text:entry.id,selected:entry.id===anchorId})))));
@@ -142,7 +144,7 @@ function renderEffectInspector(){
   );
   for(const control of basicControls(item.type)){
     const id=`basic-${control.key}`,value=item.params[control.key];
-    const format=value=>control.key==='duration'?`${Number(value).toFixed(2)} s`:control.key==='speed'?`${Number(value).toFixed(2)} ×`:`${Math.round(Number(value)*100)} %`;
+    const format=value=>control.key==='amplitude'?`${Number(value).toFixed(1)}°`:control.key==='frequency'?`${Number(value).toFixed(1)} Hz`:control.key==='damping'?`${Number(value).toFixed(1)} s⁻¹`:control.key==='duration'?`${Number(value).toFixed(2)} s`:control.key==='speed'?`${Number(value).toFixed(2)} ×`:`${Math.round(Number(value)*100)} %`;
     const output=el('output',{htmlFor:id,text:format(value)});
     const input=el('input',{id,type:'range',min:control.min,max:control.max,step:control.step,value,'aria-label':control.label,
       oninput:event=>{output.textContent=format(event.target.value);},
@@ -152,11 +154,12 @@ function renderEffectInspector(){
   if(info.trigger==='pulse')host.append(el('p',{class:'scene-help',text:'Tıklayınca · kısa süreli efekt'}),button('Efekti dene',()=>bindPreview(item.id),{id:'preview-pulse',disabled:!item.enabled}));
   if(!item.enabled)host.append(el('p',{class:'scene-help',text:'Efekt kapalı. Önizlemede görmek için Etkin seçeneğini açın.'}));
   if(!siteSource){
-    advanced.append(field('Tür',el('select',{'aria-label':'Efekt türü',onchange:event=>mutate(s=>{const target=s.effects.find(entry=>entry.id===item.id);target.type=event.target.value;target.params=defaultObjectParams(target.type);})},
+    advanced.append(field('Tür',el('select',{'aria-label':'Efekt türü',onchange:event=>mutate(s=>{const target=s.effects.find(entry=>entry.id===item.id);target.type=event.target.value;target.params=defaultObjectParams(target.type);if(objectEffectRegistry[target.type].output==='motion'){target.target.layerId=object().motionLayers?.[0];}else delete target.target.layerId;})},
       ...Object.entries(objectEffectRegistry).map(([type,entry])=>el('option',{value:type,text:entry.label,selected:type===item.type})))),
       field('Hedef bağlantı',el('select',{'aria-label':'Efekt hedef bağlantısı',onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.anchorId=event.target.value;})},
       ...object().anchors.map(entry=>el('option',{value:entry.id,text:entry.id,selected:entry.id===item.target.anchorId})))));
   }
+  if(info.output==='motion')advanced.append(field('Hareketli katman',el('select',{'aria-label':'Hareketli katman',disabled:Boolean(siteSource),onchange:event=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.layerId=event.target.value;})},...object().motionLayers.map(id=>el('option',{value:id,text:id,selected:id===item.target.layerId})))));
   advanced.append(el('p',{class:'scene-help',text:`Hedef: ${object().name} → ${item.target.anchorId}. Kaydırma nesne boyutuna göredir; profiller hizalamayı değiştirmez.`}));
   for(const [key,label,min,max,step] of [['x','Kaydırma X',-5,5,.01],['y','Kaydırma Y',-5,5,.01]])advanced.append(numberInput(label,item.target.offset[key],value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target.offset[key]=value;}),{id:`effect-offset-${key}`,min,max,step}));
   for(const [key,label,min,max,step] of [['scale','Ölçek',.01,10,.01],['depth','Efekt derinliği',-100,100,1]])advanced.append(numberInput(label,item.target[key],value=>mutate(s=>{s.effects.find(entry=>entry.id===item.id).target[key]=value;}),{min,max,step}));
@@ -178,6 +181,19 @@ function buildObject(item){
     left:`${item.pose.x*100}%`,top:`${item.pose.y*100}%`,width:`${item.pose.width*100}%`,height:`${item.pose.height*100}%`,
     transform:`rotate(${item.pose.rotation}deg)`,zIndex:String(100+Math.round(item.pose.depth))
   });
+  const artwork=previewObjects.get(item.id);
+  if(artwork){
+    const fixed=el('img',{src:artwork.image,alt:'',class:'scene-motion-fixed'});
+    Object.assign(fixed.style,{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',filter:'brightness(.72) saturate(.72)'});node.append(fixed);
+  }
+  for(const id of item.motionLayers??[]){
+    const layer=el('span',{'data-effect-layer':id,'aria-hidden':'true'});
+    Object.assign(layer.style,{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'});
+    const picture=artwork?.layers.find(entry=>entry.id===id);
+    if(picture){const image=el('img',{src:picture.image,alt:''});const b=picture.box;Object.assign(image.style,{position:'absolute',left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`,filter:'brightness(.7) saturate(.7)'});layer.append(image);}
+    else {const sample=el('span');Object.assign(sample.style,{position:'absolute',left:'49%',top:'10%',width:'2%',height:'50%',background:'#b68d4b',borderRadius:'50%'});layer.append(sample);}
+    node.append(layer);
+  }
   node.append(el('span',{class:'scene-object-label',text:item.name}));
   for(const point of item.anchors){
     const dot=el('span',{class:`scene-object-anchor ${point.id===anchorId?'is-selected':''}`,'data-anchor-id':point.id,'aria-hidden':'true'});
@@ -318,11 +334,26 @@ function install(next,message,{resetHistory=false}={}){
 }
 function installPreview(packet){
   const preview=packet.previewImage;
+  previewObjects=new Map();
+  for(const artwork of packet.previewObjects??[]){
+    const owner=packet.scene.objects.find(o=>o.id===artwork.objectId);
+    const validImage=value=>typeof value==='string'&&value.length<12*1024*1024&&/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(value);
+    if(!owner||previewObjects.has(owner.id)||!validImage(artwork.image)||!Array.isArray(artwork.layers))throw Error('Geçersiz nesne görseli.');
+    const ids=new Set();
+    for(const layer of artwork.layers){
+      const b=layer.box;
+      if(!owner.motionLayers?.includes(layer.id)||ids.has(layer.id)||!validImage(layer.image)||!b||Object.keys(b).length!==4||!['x','y','width','height'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)||b.x+b.width>1||b.y+b.height>1)throw Error('Geçersiz hareket görseli.');
+      ids.add(layer.id);
+    }
+    previewObjects.set(owner.id,artwork);
+  }
   if(preview!==undefined&&(typeof preview!=='string'||!/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(preview)))throw new Error('Site önizleme görseli geçersiz.');
   siteSource=packet.siteSource===true;
   sourceScene=siteSource?structuredClone(packet.scene):null;
   $('#advanced-settings').open=false;
   const photo=$('#scene-photo');
+  photo.onload=()=>{$('#scene-viewport').style.aspectRatio=String(photo.naturalWidth/photo.naturalHeight);fitStage();};
+  if(!preview)$('#scene-viewport').style.aspectRatio='';
   if(preview)photo.src=preview;else photo.removeAttribute('src');
   photo.hidden=!preview||!showPhoto;
   $('#scene-viewport').classList.toggle('has-photo',Boolean(preview)&&showPhoto);
@@ -352,7 +383,8 @@ $('#add-effect').onclick=()=>{
   const type=$('#add-effect-type').value;
   mutate(s=>{
     const id=uniqueEffectId(type);
-    s.effects.push({id,type,target:{kind:'sceneObject',objectId:owner.id,anchorId:point.id,offset:{x:0,y:0},scale:1,depth:0},enabled:true,seed:`${type}-${uid().slice(0,8)}`,params:defaultObjectParams(type)});
+    if(objectEffectRegistry[type].output==='motion'&&!owner.motionLayers?.length)throw Error('Nesnede önce hareketli katman kimliği tanımlayın.');
+    s.effects.push({id,type,target:{kind:'sceneObject',objectId:owner.id,anchorId:point.id,...(objectEffectRegistry[type].output==='motion'?{layerId:owner.motionLayers[0]}:{}),offset:{x:0,y:0},scale:1,depth:0},enabled:true,seed:`${type}-${uid().slice(0,8)}`,params:defaultObjectParams(type)});
     effectId=id;
   });
 };
@@ -395,11 +427,14 @@ $('#show-effects').onclick=()=>{
   showEffects=!showEffects;previewHandle?.setEnabled(showEffects);
   $('#show-effects').setAttribute('aria-pressed',String(showEffects));
 };
-new ResizeObserver(([entry])=>{
-  const ratio=(scene?.viewport.width??1600)/(scene?.viewport.height??900);
-  const width=Math.min(entry.contentRect.width,entry.contentRect.height*ratio);
+function fitStage(){
+  const well=document.querySelector('.scene-stage-well');
+  const photo=$('#scene-photo');
+  const ratio=!photo.hidden&&photo.naturalWidth?photo.naturalWidth/photo.naturalHeight:(scene?.viewport.width??1600)/(scene?.viewport.height??900);
+  const width=Math.min(well.clientWidth,well.clientHeight*ratio);
   Object.assign($('#scene-viewport').style,{width:`${width}px`,height:`${width/ratio}px`});
-}).observe(document.querySelector('.scene-stage-well'));
+}
+new ResizeObserver(fitStage).observe(document.querySelector('.scene-stage-well'));
 $('#export').onclick=()=>{
   try{
     if(!scene)throw new Error('Önce sahne yükleyin.');
