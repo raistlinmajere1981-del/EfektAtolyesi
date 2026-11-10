@@ -90,22 +90,6 @@
       "anchors": [
         { "id": "parchment.ink-plane", "x": 0.52, "y": 0.38 }
       ]
-    },
-    {
-      "id": "quill",
-      "name": "Divit",
-      "visible": true,
-      "pose": {
-        "x": 0.615,
-        "y": 0.58,
-        "width": 0.08,
-        "height": 0.3,
-        "rotation": 18,
-        "depth": 11
-      },
-      "anchors": [
-        { "id": "quill.tip", "x": 0.12, "y": 0.88 }
-      ]
     }
   ],
   "effects": [

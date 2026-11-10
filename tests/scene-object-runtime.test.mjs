@@ -433,3 +433,94 @@ test('motion JSON validates layer identity, duplicates, finite parameters and pe
     }
   }
 });
+
+test('reversible hover glow: interrupt, reverse, focus, reduced motion and cleanup',()=>{
+  const env=installEnvironment();
+  try{
+    const scene=fixture();
+    scene.effects=scene.effects.filter(effect=>effect.id==='glow-1');
+    scene.effects[0].trigger='hover';
+    scene.effects[0].interaction={enterMs:300,leaveMs:200};
+    const overlay=createObjectOverlay(env.object,compileObjectScene(scene),{objectId:'candle',ticker:env.ticker,interactive:true});
+    env.intersections[0].trigger(true);
+    assert.equal(env.ticker.activeCount,0,'idle hover has no ticker');
+    assert.equal(overlay.inspect().interactions[0].progress,0);
+    env.object.dispatch('pointerenter');
+    assert.equal(env.ticker.activeCount,1);
+    env.ticker.tick(.12);
+    const middle=overlay.inspect().interactions[0].progress;
+    assert.ok(middle>.35&&middle<.45);
+    env.object.dispatch('pointerleave');
+    env.ticker.tick(.05);
+    const reversed=overlay.inspect().interactions[0].progress;
+    assert.ok(reversed<middle&&reversed>0,'reversal starts at current intermediate position');
+    env.object.dispatch('pointerenter');
+    env.ticker.tick(.3);
+    assert.equal(overlay.inspect().interactions[0].progress,1);
+    env.object.dispatch('pointerleave');
+    env.ticker.tick(.21);
+    assert.equal(overlay.inspect().interactions[0].progress,0);
+    assert.equal(env.ticker.activeCount,0,'hover completion releases shared ticker');
+    env.object.dispatch('focusin');
+    env.ticker.tick(.1);
+    assert.ok(overlay.inspect().interactions[0].progress>0,'keyboard focus triggers glow');
+    env.setReducedMotion(true);
+    assert.equal(env.ticker.activeCount,0);
+    assert.equal(overlay.inspect().interactions[0].progress,0);
+    env.setReducedMotion(false);
+    env.object.dispatch('focusout');
+    assert.equal(env.ticker.activeCount,0);
+    overlay.destroy();
+    assert.equal(env.object.listenerCount('pointerenter'),0);
+    assert.equal(env.object.listenerCount('focusin'),0);
+  }finally{env.restore();}
+});
+
+test('click-selected glow produces one forward-and-back pulse without replacing the object action',()=>{
+  const env=installEnvironment();
+  try{
+    const scene=fixture();
+    scene.effects=scene.effects.filter(effect=>effect.id==='glow-1');
+    scene.effects[0].trigger='click';
+    const compiled=compileObjectScene(scene);
+    const handle=bindObjectScene(compiled,()=>env.object,{ticker:env.ticker,interactive:true});
+    env.intersections[0].trigger(true);
+    assert.equal(env.ticker.activeCount,0);
+    assert.equal(handle.triggerEffect('glow-1'),true);
+    env.ticker.tick(.25);
+    const overlay=[...handle.overlays.values()][0];
+    assert.equal(overlay.inspect().interactions[0].progress,1);
+    env.ticker.tick(.2);
+    assert.equal(overlay.inspect().interactions[0].progress,0);
+    assert.equal(env.ticker.activeCount,0);
+    assert.equal(handle.triggerEffect('nonexistent'),false);
+    handle.destroy();
+  }finally{env.restore();}
+});
+
+test('hover can listen on a distinct focus button while drawing in a non-interactive photo host',()=>{
+  const env=installEnvironment();
+  try{
+    const scene=fixture();
+    scene.effects=scene.effects.filter(effect=>effect.id==='glow-1');
+    scene.effects[0].trigger='hover';
+    const original=env.object,button=fakeElement('focus-button');
+    const overlay=createObjectOverlay(original,compileObjectScene(scene),{
+      objectId:'candle',ticker:env.ticker,interactive:true,interactionTarget:button,
+    });
+    env.intersections[0].trigger(true);
+    original.dispatch('pointerenter');
+    assert.equal(env.ticker.activeCount,0,'visual host never drives hover itself');
+    button.dispatch('pointerenter');
+    env.ticker.tick(.09);
+    assert.ok(overlay.inspect().interactions[0].progress>0);
+    button.dispatch('pointerleave');
+    env.ticker.tick(.25);
+    assert.equal(overlay.inspect().interactions[0].progress,0);
+    assert.equal(env.ticker.activeCount,0);
+    assert.equal(button.listenerCount('pointerenter'),1);
+    overlay.destroy();
+    assert.equal(button.listenerCount('pointerenter'),0);
+    assert.equal(button.listenerCount('click'),0);
+  }finally{env.restore();}
+});

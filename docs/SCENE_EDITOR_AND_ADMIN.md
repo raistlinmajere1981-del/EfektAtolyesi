@@ -105,11 +105,16 @@ Late replies from the previous frame are ignored by source-window comparison.
 
 ## 3. Fixture identity
 
-Fixture object ids and candle anchors align with the read-only V2 scene registry:
+The standalone fixture is a small historical contract example; the installed
+BirDeSenGör target reads the live site manifest (14 room objects / 18 anchors).
+Neither source includes a separate `quill` target. The pen and `quill.tip` belong
+to `VefkStand` and its publication contract; the editor needs no hiding exception.
+
+Standalone fixture ids:
 
 - scene: `birdesengor-study-v2`
 - objects: `research-journal`, `community-journal`, `camera`, `candle`,
-  `parchment`, `quill`
+  `parchment`
 - candle effects: `candle.flame-base` (flame, glow) and `candle.smoke` (smoke)
 
 The fixture remains a local contract example. It does not claim the V2 site is

@@ -2,7 +2,7 @@ import {$,el,button,field,download,readFile} from './dom.mjs';
 import {sceneProfiles,profileForEffect,applySceneProfile,basicControls,assertSiteStructure} from './scene-ux.mjs';
 import {History} from './history.mjs';
 import {validateProject,importProject,exportProject,MAX_FILE_BYTES} from '../model/project.mjs';
-import {objectEffectRegistry,defaultObjectParams} from '../registry/effects.mjs';
+import {objectEffectRegistry,defaultObjectParams,effectTrigger,allowedEffectTriggers} from '../registry/effects.mjs';
 import {anchorScenePoint,effectScenePoint} from '../runtime/object-scene.mjs';
 import {bindObjectScene} from '../runtime/object-overlay.mjs';
 
@@ -17,10 +17,6 @@ const notify=(type,extra={})=>{if(embedded)window.parent.postMessage({type,...ex
 const changed=()=>notify('studio:dirty');
 const status=(message,isError=false)=>{const node=$('#status');node.textContent=message;node.classList.toggle('error',isError);};
 const error=e=>{const message=e?.message||String(e);status(message,true);};
-// The drawing pen still has an internal publication binding, but is not a
-// separate physical room object. Keep its canonical anchor out of the editor UI.
-const isInternalWorkshopPart=item=>siteSource&&scene?.sceneId==='birdesengor-study-v2'&&item.id==='quill'&&!scene.effects.some(effect=>effect.target.objectId===item.id);
-const visibleObjects=()=>scene?.objects.filter(item=>!isInternalWorkshopPart(item))??[];
 const object=()=>scene?.objects.find(item=>item.id===objectId);
 const effect=()=>scene?.effects.find(item=>item.id===effectId);
 const anchor=()=>object()?.anchors.find(item=>item.id===anchorId);
@@ -86,8 +82,8 @@ function checkField(label,checked,change,attrs={}){
 
 function renderLists(){
   if(!scene)return;
-  $('#object-count').textContent=String(visibleObjects().length);
-  const rows=visibleObjects().filter(item=>objectFilter==='all'||scene.effects.some(entry=>entry.target.objectId===item.id)).map(item=>{
+  $('#object-count').textContent=String(scene.objects.length);
+  const rows=scene.objects.filter(item=>objectFilter==='all'||scene.effects.some(entry=>entry.target.objectId===item.id)).map(item=>{
     const effects=scene.effects.filter(entry=>entry.target.objectId===item.id),enabled=effects.filter(entry=>entry.enabled).length;
     const state=effects.length?`${effects.length} efekt · ${enabled?`${enabled} açık`:'kapalı'}`:'Efekt yok';
     return el('div',{class:`scene-list-row ${item.id===objectId?'selected':''}`},
@@ -146,6 +142,28 @@ function renderEffectInspector(){
     el('div',{class:'scene-section-title'},el('h3',{text:'Parametre profili'}),el('span',{id:'effect-profile',class:'scene-profile-state',text:profileForEffect(item)})),
     el('div',{class:'scene-profiles'},...sceneProfiles.map(profile=>button(profile.label,()=>mutate(s=>applySceneProfile(s.effects.find(entry=>entry.id===item.id),profile.key)),{id:`profile-${profile.key}`,'aria-pressed':String(profileForEffect(item)===profile.label)})))
   );
+  const selectedTrigger=effectTrigger(item);
+  const availableTriggers=allowedEffectTriggers(item.type);
+  const labels={ambient:'Sürekli',click:'OnClick · Tıklama',hover:'OnHover · Üzerine gelme'};
+  host.append(field('Tetikleme',el('select',{
+    id:'effect-trigger','aria-label':'Tetikleme',disabled:availableTriggers.length===1,
+    onchange:event=>mutate(s=>{
+      const target=s.effects.find(entry=>entry.id===item.id);
+      target.trigger=event.target.value;
+      if(event.target.value==='ambient')delete target.interaction;
+    }),
+  },...availableTriggers.map(trigger=>el('option',{value:trigger,text:labels[trigger],selected:trigger===selectedTrigger})))));
+  if(['hover','click'].includes(selectedTrigger)&&item.type==='glow'){
+    host.append(el('p',{class:'scene-help',text:selectedTrigger==='hover'
+      ?'Nesneye gelince 0→1, ayrılınca bulunduğu noktadan 1→0. Klavye odağı da çalışır.'
+      :'Tıklanınca 0→1→0; mevcut nesne tıklamasını engellemez.'}));
+    for(const [key,label,fallback] of [['enterMs','İleri hareket (ms)',240],['leaveMs','Geri hareket (ms)',190]]){
+      host.append(numberInput(label,item.interaction?.[key]??fallback,value=>mutate(s=>{
+        const target=s.effects.find(entry=>entry.id===item.id);
+        target.interaction={enterMs:240,leaveMs:190,...target.interaction,[key]:value};
+      }),{id:'interaction-'+key,min:80,max:2000,step:10}));
+    }
+  }
   for(const control of basicControls(item.type)){
     const id=`basic-${control.key}`,value=item.params[control.key];
     const format=value=>control.key==='amplitude'?`${Number(value).toFixed(1)}°`:control.key==='frequency'?`${Number(value).toFixed(1)} Hz`:control.key==='damping'?`${Number(value).toFixed(1)} s⁻¹`:control.key==='duration'?`${Number(value).toFixed(2)} s`:control.key==='speed'?`${Number(value).toFixed(2)} ×`:`${Math.round(Number(value)*100)} %`;
@@ -156,6 +174,8 @@ function renderEffectInspector(){
     host.append(el('div',{class:'scene-slider'},el('div',{class:'scene-slider-title'},el('label',{htmlFor:id,text:control.label}),output),input));
   }
   if(info.trigger==='pulse')host.append(el('p',{class:'scene-help',text:'Tıklayınca · kısa süreli efekt'}),button('Efekti dene',()=>bindPreview(item.id),{id:'preview-pulse',disabled:!item.enabled}));
+  if(item.type==='glow'&&selectedTrigger==='click')host.append(button('Efekti dene',()=>previewHandle?.triggerEffect(item.id),{id:'preview-interaction-click',disabled:!item.enabled}));
+  if(item.type==='glow'&&selectedTrigger==='hover')host.append(el('p',{class:'scene-help',text:'Önizleme: Görselde nesneye gelin ve ayrılın.'}));
   if(!item.enabled)host.append(el('p',{class:'scene-help',text:'Efekt kapalı. Önizlemede görmek için Etkin seçeneğini açın.'}));
   if(!siteSource){
     advanced.append(field('Tür',el('select',{'aria-label':'Efekt türü',onchange:event=>mutate(s=>{const target=s.effects.find(entry=>entry.id===item.id);target.type=event.target.value;target.params=defaultObjectParams(target.type);if(objectEffectRegistry[target.type].output==='motion'){target.target.layerId=object().motionLayers?.[0];}else delete target.target.layerId;})},
@@ -240,7 +260,7 @@ function bindPreview(pulseId=null){
   if(!scene)return;
   try{
     const selected={...scene,effects:scene.effects.filter(item=>objectEffectRegistry[item.type].trigger!=='pulse'||item.id===pulseId)};
-    previewHandle=bindObjectScene(selected,id=>objectElements.get(id),{expectedSceneId:scene.sceneId});
+    previewHandle=bindObjectScene(selected,id=>objectElements.get(id),{expectedSceneId:scene.sceneId,interactive:true});
     if(!playing)previewHandle.setPaused(true);
     previewHandle.setEnabled(showEffects);
   }catch(e){previewHandle=null;error(e);}
@@ -249,7 +269,7 @@ function renderStage(){
   previewHandle?.destroy();previewHandle=null;
   const host=$('#scene-objects');host.replaceChildren();objectElements.clear();
   if(!scene)return;
-  for(const item of visibleObjects()){
+  for(const item of scene.objects){
     const node=buildObject(item);objectElements.set(item.id,node);host.append(node);
   }
   bindPreview();

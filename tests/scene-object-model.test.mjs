@@ -32,7 +32,9 @@ test('v2 object scene imports and roundtrips without migration',()=>{
   const scene=fixture();
   assert.equal(scene.version,2);
   assert.equal(scene.kind,'objectScene');
-  assert.equal(scene.objects.length,6);
+  assert.equal(scene.objects.length,5);
+  assert.ok(!scene.objects.some(object=>object.id==='quill'));
+  assert.ok(!scene.objects.flatMap(object=>object.anchors).some(anchor=>anchor.id==='quill.tip'));
   assert.equal(scene.effects.length,3);
   assert.deepEqual(importProject(exportProject(scene)),scene);
   assert.deepEqual(importProject(JSON.stringify(scene)),scene);
@@ -95,7 +97,7 @@ test('object compiler preserves order, resolves anchors and filters visibility',
   const compiled=compileObjectScene(scene);
   assert.equal(compiled.sceneId,'birdesengor-study-v2');
   assert.deepEqual(compiled.viewport,{width:1600,height:900});
-  assert.equal(compiled.objects.length,6);
+  assert.equal(compiled.objects.length,5);
   assert.deepEqual(compiled.effects.map(effect=>effect.id),['glow-1','flame-1','smoke-1']);
   const flame=compiled.effects[1];
   assert.equal(flame.objectId,'candle');

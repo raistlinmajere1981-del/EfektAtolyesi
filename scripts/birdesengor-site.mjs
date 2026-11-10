@@ -14,15 +14,16 @@ const ROOT='src/scene/SceneRoot.jsx';
 const STAGE_CSS='src/scene/study-foundation.css';
 const CANDLE_HOST='src/effects/CandleEffects.jsx';
 const PASSIVE_HOST='src/effects/PassiveObjectEffects.jsx';
+const HOVER_HOST='src/effects/HoverObjectEffects.jsx';
 const EFFECT_HOOK='src/effects/useObjectEffects.js';
-const EFFECT_CALL_SITES=new Set([CANDLE_HOST,PASSIVE_HOST,EFFECT_HOOK]);
+const EFFECT_CALL_SITES=new Set([CANDLE_HOST,PASSIVE_HOST,EFFECT_HOOK,HOVER_HOST]);
 
 /** A reviewed static mount contract, not merely a module on disk. The actual
  * browser animation/interaction contract is covered by site Chromium tests.
  * Unknown effect call sites or removed CSS/hosts invalidate staging. */
 function verifiedMounts(entries){
  const code=file=>entries.get(file)?.toString('utf8')??'';
- const scene=code(ROOT),candle=code(CANDLE_HOST),passive=code(PASSIVE_HOST),hook=code(EFFECT_HOOK),css=code(STAGE_CSS);
+ const scene=code(ROOT),candle=code(CANDLE_HOST),passive=code(PASSIVE_HOST),hover=code(HOVER_HOST),hook=code(EFFECT_HOOK),css=code(STAGE_CSS);
  const checks={
   'V2 has positioned passive hosts':scene.includes("className={AMBIENT_EFFECT_IDS.has(object.id) ? 'study-effect-host'")
     && scene.includes('ambientHostStyle(object)') && scene.includes('normalizedRoomPose(object)'),
@@ -31,6 +32,14 @@ function verifiedMounts(entries){
   'Passive allowlist mounted in room':scene.includes('PASSIVE_EFFECT_IDS.map(objectId => (')
     && /<PassiveObjectEffects\s+key=\{objectId\}\s+objectId=\{objectId\}/.test(scene)
     && scene.includes("from '../effects/PassiveObjectEffects.jsx'"),
+  'Hover overlays are mounted over photographed targets and use original focus controls':scene.includes('<HoverObjectEffects enabled={state.phase===\'room\'}')
+    && scene.includes('study-hover-host') && scene.includes('HOVER_OBJECT_EFFECT_GROUPS')
+    && scene.includes("from '../effects/HoverObjectEffects.jsx'")
+    && hover.includes('useHoverObjectEffects({enabled,reducedMotion})')
+    && hook.includes('sceneForHoverObjectEffects(scene,objectId)')
+    && hook.includes('interactionTarget:input')
+    && hook.includes('bindObjectScene(compiled,()=>host')
+    && css.includes('.study-hover-host { pointer-events:none;'),
   'Pulse buttons and short-lived canonical mounts are wired':scene.includes("usePulseObjectEffects({enabled:state.phase==='room',reducedMotion})")
     && scene.includes('data-pulse-object-id={object.id}') && scene.includes('onClick={()=>pulse(object.id)}')
     && scene.includes('study-pulse-host') && hook.includes('sceneForPulseObjectEffects(scene,id)')
@@ -50,10 +59,13 @@ function verifiedMounts(entries){
  };
  const unreviewedPulses=[...entries].filter(([file,bytes])=>/\.(?:js|jsx)$/.test(file)
    && /\busePulseObjectEffects\s*\(/.test(bytes.toString('utf8')) && ![ROOT,EFFECT_HOOK].includes(file)).map(([file])=>file);
+ const unreviewedHover=[...entries].filter(([file,bytes])=>/\.(?:js|jsx)$/.test(file)
+   && /\buseHoverObjectEffects\s*\(/.test(bytes.toString('utf8'))
+   && ![EFFECT_HOOK,HOVER_HOST].includes(file)).map(([file])=>file);
  const unreviewed=[...entries].filter(([file,bytes])=>/\.(?:js|jsx)$/.test(file)
    && /\buseObjectEffects\s*\(/.test(bytes.toString('utf8')) && !EFFECT_CALL_SITES.has(file)).map(([file])=>file);
  const failures=Object.entries(checks).filter(([,ok])=>!ok).map(([name])=>name);
- unreviewed.push(...unreviewedPulses);
+ unreviewed.push(...unreviewedPulses,...unreviewedHover);
  if(unreviewed.length)failures.push('unreviewed effect call sites: '+unreviewed.join(', '));
  return {ready:failures.length===0,failures};
 }
@@ -111,6 +123,10 @@ export function siteSceneSource(root=BIRDESENGOR_SITE){
   }
   for(const [objectId,group] of Object.entries(adapter.PASSIVE_OBJECT_EFFECT_GROUPS)){
    adapter.sceneForObjectEffects(scene,objectId);
+   for(const entry of group)result.set(entry.id,{...entry,objectId});
+  }
+  for(const [objectId,group] of Object.entries(adapter.HOVER_OBJECT_EFFECT_GROUPS)){
+   adapter.sceneForHoverObjectEffects(scene,objectId);
    for(const entry of group)result.set(entry.id,{...entry,objectId});
   }
   for(const [objectId,group] of Object.entries(adapter.PULSE_OBJECT_EFFECT_GROUPS)){

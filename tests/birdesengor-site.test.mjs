@@ -26,8 +26,9 @@ test('installed target opens exact CURRENT site objects/anchors/photo and safely
   const opened=await invoke('load',{id},temp);
   assert.deepEqual(opened.scene,canonical);
   assert.ok(opened.scene.objects.some(object=>object.id==='vefk-stand'));
-  assert.ok(!opened.scene.objects.some(object=>object.id==='parchment'));
-  assert.equal(opened.scene.objects.length,15);
+  assert.ok(!opened.scene.objects.some(object=>['quill','parchment'].includes(object.id)));
+  assert.ok(!opened.scene.objects.flatMap(object=>object.anchors).some(anchor=>anchor.id==='quill.tip'));
+  assert.equal(opened.scene.objects.length,14);
   assert.equal(opened.siteSource,true);
   assert.equal(opened.scene.previewImage,undefined);
   assert.equal(opened.previewImage,'data:image/webp;base64,'+readFileSync(join(BIRDESENGOR_SITE,'public/scene-assets/approved/room-natural-sash-2to1.webp')).toString('base64'));
@@ -41,7 +42,7 @@ test('installed target opens exact CURRENT site objects/anchors/photo and safely
   const edit=structuredClone(canonical);edit.effects[0].params.opacity=.71;
   await assert.rejects(invoke('save',{id,scene:edit},temp),/kaynağı değişmiş/);
   const result=await invoke('save',{id,scene:edit,sourceHash:opened.sourceHash},temp);
-  assert.equal(result.readiness.ready,true);assert.equal(result.readiness.mountedCount,9);
+  assert.equal(result.readiness.ready,true);assert.equal(result.readiness.mountedCount,13);
   assert.equal(result.readiness.enabledCount,edit.effects.filter(effect=>effect.enabled).length);
   assert.deepEqual((await invoke('load',{id},temp)).scene,edit);
   // Never call installed-target prepare from this test: it can write the real
@@ -65,7 +66,7 @@ test('isolated site staging validates slots, pose, current source hash and write
   scene.name+=' · isolated staging test';
   // All nine allowlisted effect slots now mount through the canonical runtime.
   // The staged file is isolated: no test ever writes the real site source.
-  assert.equal(source.readiness(scene,state).mountedCount,9);
+  assert.equal(source.readiness(scene,state).mountedCount,13);
   assert.equal(source.readiness(scene,state).ready,true);
   const extra=structuredClone(scene);extra.effects.push({...structuredClone(scene.effects[0]),id:'manually-added'});
   await assert.rejects(source.stage(extra,state.sourceHash),/Desteklenmeyen site efekt yuvası/);

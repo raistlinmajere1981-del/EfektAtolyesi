@@ -63,7 +63,7 @@ test("local V2 scene target saves/loads narrowly and rejects invalid/deploy inpu
     assert.equal(opened.scene.sceneId,"birdesengor-study-v2");
     assert.deepEqual(opened.scene.viewport,{width:1600,height:900});
     assert.deepEqual(opened.scene.objects.map(item=>item.id).sort(),
-      ["camera","candle","community-journal","parchment","quill","research-journal"]);
+      ["camera","candle","community-journal","parchment","research-journal"]);
     assert.deepEqual(opened.scene.effects.map(item=>item.id).sort(),["flame-1","glow-1","smoke-1"]);
     assert.equal(opened.scene.photo,undefined,"the scene target has no photo replacement");
 
